@@ -13,6 +13,7 @@ var i18n = {
     tabKanban: 'Kanban',
     tabTable: 'Tableau',
     tabGantt: 'Gantt',
+    tabPlanning: 'Planning',
     tabTemplates: 'Templates',
     newTask: 'Nouvelle tâche',
     newProject: 'Nouveau projet',
@@ -40,6 +41,8 @@ var i18n = {
     ganttTitle: 'Diagramme de Gantt',
     ganttYear: 'Année :',
     ganttToday: "Aujourd'hui",
+    planningTitle: 'Planning des personnes',
+    planningSubtitle: 'Visualisez les tâches assignées par personne',
     ganttDays: 'Jours',
     ganttWeeks: 'Semaines',
     ganttMonths: 'Mois',
@@ -355,6 +358,7 @@ var i18n = {
     tabKanban: 'Kanban',
     tabTable: 'Table',
     tabGantt: 'Gantt',
+    tabPlanning: 'Planning',
     tabTemplates: 'Templates',
     newTask: 'New task',
     newProject: 'New project',
@@ -382,6 +386,8 @@ var i18n = {
     ganttTitle: 'Gantt Chart',
     ganttYear: 'Year:',
     ganttToday: 'Today',
+    planningTitle: 'People Planning',
+    planningSubtitle: 'View tasks assigned by person',
     ganttDays: 'Days',
     ganttWeeks: 'Weeks',
     ganttMonths: 'Months',
@@ -862,6 +868,35 @@ var ganttCustomEnd = '';   // mode 'custom' : date de fin (YYYY-MM-DD)
 var ganttYear = new Date().getFullYear();
 var ganttMonth = new Date().getMonth();
 var expandedGanttTasks = {}; // taskId -> true quand les sous-tâches sont visibles dans le Gantt
+// Planning view state
+var planningMode = 'days';
+var planningYear = new Date().getFullYear();
+var planningMonth = new Date().getMonth();
+var planningCustomStart = ''; // mode 'custom' : date de début (YYYY-MM-DD)
+var planningCustomEnd = '';   // mode 'custom' : date de fin (YYYY-MM-DD)
+var expandedPlanningUsers = {}; // user identifier -> true quand l'utilisateur est déplié
+// Initialisation par défaut : tout déplier
+function initPlanningUsersExpanded() {
+  var tasksWithDates = getFilteredTasks().filter(function(task) { return task.Start_Date || task.Due_Date; });
+  var allUsers = {};
+  tasksWithDates.forEach(function(task) {
+    var assigneeStr = task.Assignee || '';
+    var assigneeList = assigneeStr.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
+    if (assigneeList.length === 0) {
+      var unassignedKey = currentLang === 'fr' ? 'Non assigné' : 'Unassigned';
+      allUsers[unassignedKey] = true;
+    } else {
+      assigneeList.forEach(function(assignee) {
+        var user = findUserByIdent(assignee);
+        var identifier = user ? (user.Email || user.Name) : assignee;
+        allUsers[identifier] = true;
+      });
+    }
+  });
+  Object.keys(allUsers).forEach(function(user) {
+    expandedPlanningUsers[user] = true;
+  });
+}
 var calendarYear = new Date().getFullYear();
 var calendarMonth = new Date().getMonth();
 var calendarMode = 'month'; // 'month', 'week' or 'day'
@@ -1731,6 +1766,7 @@ function switchTab(tabId) {
   if (tabId === 'kanban') renderKanbanView();
   if (tabId === 'table') renderTableView();
   if (tabId === 'gantt') renderGanttView();
+  if (tabId === 'planning') renderPlanningView();
   if (tabId === 'templates') renderTemplatesView();
   if (tabId === 'stats') renderStatsView();
   if (tabId === 'team') renderTeamView();
@@ -3156,6 +3192,7 @@ function refreshAllViews() {
     if (tab === 'kanban') renderKanbanView();
     if (tab === 'table') renderTableView();
     if (tab === 'gantt') renderGanttView();
+    if (tab === 'planning') renderPlanningView();
     if (tab === 'templates') renderTemplatesView();
     if (tab === 'stats') renderStatsView();
     if (tab === 'team') renderTeamView();
@@ -5282,6 +5319,515 @@ function toggleGanttFullscreen() {
 }
 
 // =============================================================================
+// PLANNING VIEW
+// =============================================================================
+
+function renderPlanningView() {
+  // Initialize all users as expanded by default (point 3)
+  if (Object.keys(expandedPlanningUsers).length === 0) {
+    initPlanningUsersExpanded();
+  }
+  
+  var yearSelect = document.getElementById('planning-year');
+  if (yearSelect && yearSelect.options.length === 0) {
+    for (var y = 2020; y <= 2050; y++) {
+      var opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      yearSelect.appendChild(opt);
+    }
+  }
+  if (yearSelect) yearSelect.value = planningYear;
+
+  // Update mode buttons
+  document.querySelectorAll('[data-planning-mode]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-planning-mode') === planningMode);
+  });
+
+  // Show/hide custom range
+  var rangeBox = document.getElementById('planning-custom-range');
+  if (rangeBox) rangeBox.style.display = (planningMode === 'custom') ? 'flex' : 'none';
+  if (planningMode === 'custom') {
+    var sEl = document.getElementById('planning-custom-start');
+    var eEl = document.getElementById('planning-custom-end');
+    if (sEl) sEl.value = planningCustomStart;
+    if (eEl) eEl.value = planningCustomEnd;
+  }
+
+  var tasksWithDates = getFilteredTasks().filter(function(task) { 
+    return task.Start_Date || task.Due_Date; 
+  });
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var dayNames = currentLang === 'fr'
+    ? ['DIM.', 'LUN.', 'MAR.', 'MER.', 'JEU.', 'VEN.', 'SAM.']
+    : ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  var monthNamesShort = currentLang === 'fr'
+    ? ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var monthNames = currentLang === 'fr'
+    ? ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+    : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  var html = '<div class="gantt-container planning-container"><table class="gantt-table planning-table">';
+
+  // Group tasks by assignee - each task appears under each assigned person
+  // Use unique identifier (email) as key to avoid conflicts with same display names
+  var tasksByUser = {};
+  var userDisplayNames = {}; // Map from identifier to display name
+  
+  tasksWithDates.forEach(function(task) { 
+    var assigneeStr = task.Assignee || '';
+    var assigneeList = assigneeStr.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
+    
+    // If no assignee, use "Unassigned"
+    if (assigneeList.length === 0) {
+      var unassignedKey = currentLang === 'fr' ? 'Non assigné' : 'Unassigned';
+      assigneeList = [unassignedKey];
+      userDisplayNames[unassignedKey] = unassignedKey;
+    }
+    
+    // Add task to each assignee's list using unique identifier
+    assigneeList.forEach(function(assignee) {
+      var user = findUserByIdent(assignee);
+      var identifier = user ? (user.Email || user.Name) : assignee;
+      var displayName = getUserDisplayName(assignee) || assignee;
+      
+      if (!tasksByUser[identifier]) tasksByUser[identifier] = [];
+      tasksByUser[identifier].push(task);
+      userDisplayNames[identifier] = displayName;
+    });
+  });
+
+  var sortedUsers = Object.keys(tasksByUser).sort();
+
+  // Determine date range based on mode
+  var startDate, endDate, headers = [];
+
+  if (planningMode === 'custom' && planningCustomStart && planningCustomEnd) {
+    startDate = new Date(planningCustomStart + 'T00:00:00');
+    endDate = new Date(planningCustomEnd + 'T23:59:59');
+    headers = generatePlanningHeadersCustom(startDate, endDate, currentLang);
+  } else if (planningMode === 'days') {
+    // 3 months view
+    startDate = new Date(planningYear, planningMonth - 1, 1);
+    endDate = new Date(planningYear, planningMonth + 2, 0, 23, 59, 59);
+    headers = generatePlanningHeadersDays(startDate, endDate, dayNames, monthNamesShort, currentLang);
+  } else if (planningMode === 'weeks') {
+    // 8 weeks view
+    var eightWeeksAgo = new Date(planningYear, planningMonth, 1);
+    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+    var startWeek = getISOWeek(eightWeeksAgo);
+    var numWeeks = 34;
+    headers = [];
+    for (var w = 0; w < numWeeks; w++) {
+      var wn = startWeek + w;
+      var yr = planningYear;
+      if (wn > 52) { wn -= 52; yr++; }
+      var ws = getWeekStart(yr, wn);
+      var weekStart = new Date(Date.UTC(ws.getFullYear(), ws.getMonth(), ws.getDate(), 0, 0, 0, 0));
+      var we = new Date(weekStart);
+      we.setUTCDate(we.getUTCDate() + 6);
+      we.setUTCHours(23, 59, 59, 999);
+      var isCurrentWeek = getISOWeek(today) === wn && today.getFullYear() === yr;
+      headers.push({
+        label: 'S' + wn,
+        subtitle: monthNamesShort[weekStart.getUTCMonth()] + ' ' + String(weekStart.getUTCFullYear()).substring(2),
+        start: weekStart,
+        end: we,
+        isCurrent: isCurrentWeek
+      });
+    }
+  } else if (planningMode === 'months') {
+    // 12 months view
+    headers = [];
+    for (var m = 0; m < 12; m++) {
+      var monthStart = new Date(Date.UTC(planningYear, m, 1, 0, 0, 0, 0));
+      var monthEnd = new Date(Date.UTC(planningYear, m + 1, 0, 23, 59, 59, 999));
+      var isCurrentMonth = monthStart.getUTCMonth() === today.getMonth() && monthStart.getUTCFullYear() === today.getFullYear();
+      headers.push({
+        label: monthNamesShort[m],
+        subtitle: planningYear,
+        start: monthStart,
+        end: monthEnd,
+        isCurrent: isCurrentMonth
+      });
+    }
+  } else if (planningMode === 'year') {
+    // 12 months view for year
+    headers = [];
+    for (var m2 = 0; m2 < 12; m2++) {
+      var monthStart2 = new Date(Date.UTC(planningYear, m2, 1, 0, 0, 0, 0));
+      var monthEnd2 = new Date(Date.UTC(planningYear, m2 + 1, 0, 23, 59, 59, 999));
+      var isCurrentMonth2 = monthStart2.getUTCMonth() === today.getMonth() && monthStart2.getUTCFullYear() === today.getFullYear();
+      headers.push({
+        label: monthNamesShort[m2],
+        subtitle: '',
+        start: monthStart2,
+        end: monthEnd2,
+        isCurrent: isCurrentMonth2
+      });
+    }
+  } else if (planningMode === 'twoyears') {
+    // 24 months view
+    headers = [];
+    for (var y2 = 0; y2 < 2; y2++) {
+      var year = planningYear + y2;
+      for (var m3 = 0; m3 < 12; m3++) {
+        var monthStart3 = new Date(Date.UTC(year, m3, 1, 0, 0, 0, 0));
+        var monthEnd3 = new Date(Date.UTC(year, m3 + 1, 0, 23, 59, 59, 999));
+        var isCurrentMonth3 = monthStart3.getUTCMonth() === today.getMonth() && monthStart3.getUTCFullYear() === today.getFullYear();
+        headers.push({
+          label: monthNamesShort[m3],
+          subtitle: year,
+          start: monthStart3,
+          end: monthEnd3,
+          isCurrent: isCurrentMonth3
+        });
+      }
+    }
+  }
+
+  // Generate header row
+  html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colAssignee') + '</th>';
+  for (var hi = 0; hi < headers.length; hi++) {
+    var h = headers[hi];
+    html += '<th style="min-width:' + (planningMode === 'days' ? '40px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '">';
+    html += '<div style="font-size:' + (planningMode === 'days' ? '9px' : '11px') + ';font-weight:800;">' + h.label + '</div>';
+    if (h.subtitle) {
+      html += '<div style="font-size:' + (planningMode === 'days' ? '8px' : '9px') + ';font-weight:400;color:#94a3b8;">' + h.subtitle + '</div>';
+    }
+    html += '</th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  // Render rows for each user - ONE ROW PER USER with all tasks on same line
+  for (var ui = 0; ui < sortedUsers.length; ui++) {
+    var user = sortedUsers[ui];
+    var userTasks = tasksByUser[user];
+    var displayName = userDisplayNames[user] || user;
+    var isExpanded = !!expandedPlanningUsers[user];
+
+    html += '<tr class="planning-row" data-user="' + sanitize(user) + '" style="' + (isExpanded ? '' : 'display:none;') + '">';
+    
+    // User label column
+    html += '<td class="gantt-task-label planning-user-label" style="vertical-align:top;">';
+    html += '<span class="planning-user-expand" onclick="togglePlanningUser(\'' + sanitize(user) + '\')" style="cursor:pointer;margin-right:6px;display:inline-block;width:16px;text-align:center;">';
+    html += isExpanded ? '▼' : '▶';
+    html += '</span>';
+    html += '<strong style="color:' + getUserColor(user) + ';">' + sanitize(displayName) + '</strong>';
+    html += '</td>';
+
+    // For each time period, render all tasks for this user
+    for (var hi2 = 0; hi2 < headers.length; hi2++) {
+      var h2 = headers[hi2];
+      var cellStart = h2.start;
+      var cellEnd = h2.end;
+      
+      html += '<td class="gantt-cell planning-cell" style="position:relative;padding:0;" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
+      
+      // Find all tasks for this user that overlap with this period
+      var overlappingTasks = userTasks.filter(function(task) {
+        var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
+        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
+        if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
+        if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
+        if (tStart) tStart.setUTCHours(0, 0, 0, 0);
+        if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
+        
+        return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
+      });
+      
+      // Render each overlapping task as a bar in this cell
+      var barIndex = 0;
+      overlappingTasks.forEach(function(task) {
+        var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
+        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
+        if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
+        if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
+        if (tStart) tStart.setUTCHours(0, 0, 0, 0);
+        if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
+        
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        
+        // Calculate position and width
+        var totalDuration = cellEnd - cellStart;
+        var taskInCellStart = Math.max(tStart.getTime(), cellStart.getTime());
+        var taskInCellEnd = Math.min(tEnd.getTime(), cellEnd.getTime());
+        var durationInCell = taskInCellEnd - taskInCellStart;
+        var startPercent = ((taskInCellStart - cellStart.getTime()) / totalDuration * 100);
+        var widthPercent = (durationInCell / totalDuration * 100);
+        
+        if (widthPercent > 2) {
+          // Stack bars vertically to avoid overlap
+          var topOffset = barIndex * 20; // 20px offset for each additional task
+          var tooltip = sanitize(task.Title || '') + '\n' + 
+                        (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(task.Status || '') + '\n' +
+                        (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(task.Priority || '');
+          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '\\n') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
+          if (widthPercent > 30) {
+            html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
+          }
+          html += '</div>';
+          barIndex++;
+        }
+      });
+      
+      html += '</td>';
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody></table></div>';
+  
+  var container = document.getElementById('planning-view');
+  if (container) {
+    container.innerHTML = html;
+    // Add click handler for user expansion
+    container.querySelectorAll('.planning-user-expand').forEach(function(el) {
+      el.onclick = function(e) {
+        e.stopPropagation();
+        var user = this.closest('.planning-row').getAttribute('data-user');
+        togglePlanningUser(user);
+      };
+    });
+  }
+}
+
+function getUserColor(user) {
+  // Return a consistent color for each user
+  var colors = ['#ef4444', '#f59e0b', '#fbbf24', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#06b6d4'];
+  var hash = 0;
+  for (var i = 0; i < user.length; i++) {
+    hash = user.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function generatePlanningHeadersDays(startDate, endDate, dayNames, monthNamesShort, lang) {
+  var headers = [];
+  var current = new Date(startDate);
+  while (current <= endDate) {
+    var isCurrentDay = current.getDate() === new Date().getDate() && 
+                      current.getMonth() === new Date().getMonth() && 
+                      current.getFullYear() === new Date().getFullYear();
+    var dayStart = new Date(Date.UTC(current.getFullYear(), current.getMonth(), current.getDate(), 0, 0, 0, 0));
+    var dayEnd = new Date(dayStart);
+    dayEnd.setUTCHours(23, 59, 59, 999);
+    headers.push({
+      label: dayNames[current.getDay()],
+      subtitle: current.getDate() + ' ' + monthNamesShort[current.getMonth()],
+      start: dayStart,
+      end: dayEnd,
+      isCurrent: isCurrentDay
+    });
+    current.setDate(current.getDate() + 1);
+  }
+  return headers;
+}
+
+function generatePlanningHeadersCustom(startDate, endDate, lang) {
+  var headers = [];
+  var current = new Date(startDate);
+  var diffDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+  
+  // If more than 60 days, use weeks
+  if (diffDays > 60) {
+    while (current <= endDate) {
+      var weekStart = new Date(Date.UTC(current.getFullYear(), current.getMonth(), current.getDate(), 0, 0, 0, 0));
+      var weekEnd = new Date(weekStart);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+      weekEnd.setUTCHours(23, 59, 59, 999);
+      if (weekEnd > endDate) weekEnd = new Date(endDate);
+      
+      var monthNamesShort = lang === 'fr'
+        ? ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+        : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      var isCurrentWeek = current <= new Date() && weekEnd >= new Date();
+      headers.push({
+        label: 'S' + getISOWeek(weekStart),
+        subtitle: monthNamesShort[weekStart.getUTCMonth()] + ' ' + String(weekStart.getUTCFullYear()).substring(2),
+        start: weekStart,
+        end: weekEnd,
+        isCurrent: isCurrentWeek
+      });
+      current.setDate(current.getDate() + 7);
+    }
+  } else {
+    // Daily view
+    var dayNames = lang === 'fr'
+      ? ['DIM.', 'LUN.', 'MAR.', 'MER.', 'JEU.', 'VEN.', 'SAM.']
+      : ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    var monthNamesShort = lang === 'fr'
+      ? ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+      : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    while (current <= endDate) {
+      var isCurrentDay = current.getDate() === new Date().getDate() && 
+                        current.getMonth() === new Date().getMonth() && 
+                        current.getFullYear() === new Date().getFullYear();
+      var dayStart = new Date(Date.UTC(current.getFullYear(), current.getMonth(), current.getDate(), 0, 0, 0, 0));
+      var dayEnd = new Date(dayStart);
+      dayEnd.setUTCHours(23, 59, 59, 999);
+      headers.push({
+        label: dayNames[current.getDay()],
+        subtitle: current.getDate() + ' ' + monthNamesShort[current.getMonth()],
+        start: dayStart,
+        end: dayEnd,
+        isCurrent: isCurrentDay
+      });
+      current.setDate(current.getDate() + 1);
+    }
+  }
+  return headers;
+}
+
+function setPlanningMode(mode) {
+  planningMode = mode;
+  document.querySelectorAll('[data-planning-mode]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-planning-mode') === mode);
+  });
+  var rangeBox = document.getElementById('planning-custom-range');
+  if (rangeBox) rangeBox.style.display = (mode === 'custom') ? 'flex' : 'none';
+  if (mode === 'custom') {
+    if (!planningCustomStart || !planningCustomEnd) {
+      var ds = new Date(planningYear, planningMonth - 1, 1);
+      var de = new Date(planningYear, planningMonth + 2, 0);
+      planningCustomStart = ds.toISOString().split('T')[0];
+      planningCustomEnd = de.toISOString().split('T')[0];
+    }
+    var sEl = document.getElementById('planning-custom-start');
+    var eEl = document.getElementById('planning-custom-end');
+    if (sEl) sEl.value = planningCustomStart;
+    if (eEl) eEl.value = planningCustomEnd;
+  }
+  renderPlanningView();
+}
+
+function setPlanningYear(value) {
+  planningYear = Math.max(2020, Math.min(2050, parseInt(value)));
+  renderPlanningView();
+}
+
+function planningNav(dir) {
+  if (planningMode === 'months' || planningMode === 'year' || planningMode === 'twoyears') {
+    planningYear += dir;
+    planningYear = Math.max(2020, Math.min(2050, planningYear));
+  } else if (planningMode === 'weeks') {
+    planningMonth += dir * 3;
+    if (planningMonth > 11) { planningMonth -= 12; planningYear++; }
+    if (planningMonth < 0) { planningMonth += 12; planningYear--; }
+    planningYear = Math.max(2020, Math.min(2050, planningYear));
+  } else {
+    planningMonth += dir;
+    if (planningMonth > 11) { planningMonth -= 12; planningYear++; }
+    if (planningMonth < 0) { planningMonth += 12; planningYear--; }
+    planningYear = Math.max(2020, Math.min(2050, planningYear));
+  }
+  renderPlanningView();
+}
+
+function planningToday() {
+  planningYear = new Date().getFullYear();
+  planningMonth = new Date().getMonth();
+  renderPlanningView();
+}
+
+function setPlanningCustomRange() {
+  var sEl = document.getElementById('planning-custom-start');
+  var eEl = document.getElementById('planning-custom-end');
+  if (sEl) planningCustomStart = sEl.value;
+  if (eEl) planningCustomEnd = eEl.value;
+  renderPlanningView();
+}
+
+function togglePlanningUser(user) {
+  if (expandedPlanningUsers[user]) {
+    delete expandedPlanningUsers[user];
+  } else {
+    expandedPlanningUsers[user] = true;
+  }
+  renderPlanningView();
+}
+
+function planningExpandAll() {
+  // Use the same logic as initPlanningUsersExpanded to get all unique user identifiers
+  var tasksWithDates = getFilteredTasks().filter(function(task) { return task.Start_Date || task.Due_Date; });
+  var allUsers = {};
+  tasksWithDates.forEach(function(task) {
+    var assigneeStr = task.Assignee || '';
+    var assigneeList = assigneeStr.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
+    if (assigneeList.length === 0) {
+      var unassignedKey = currentLang === 'fr' ? 'Non assigné' : 'Unassigned';
+      allUsers[unassignedKey] = true;
+    } else {
+      assigneeList.forEach(function(assignee) {
+        var user = findUserByIdent(assignee);
+        var identifier = user ? (user.Email || user.Name) : assignee;
+        allUsers[identifier] = true;
+      });
+    }
+  });
+  Object.keys(allUsers).forEach(function(user) {
+    expandedPlanningUsers[user] = true;
+  });
+  renderPlanningView();
+}
+
+function planningCollapseAll() {
+  expandedPlanningUsers = {};
+  renderPlanningView();
+}
+
+function togglePlanningFullscreen() {
+  var el = document.getElementById('tab-planning');
+  var btn = document.getElementById('planning-fullscreen-btn');
+  if (!el) return;
+  var on = el.classList.toggle('gantt-fullscreen');
+  if (btn) btn.title = on ? (currentLang === 'fr' ? 'Quitter le plein écran' : 'Exit fullscreen') : (currentLang === 'fr' ? 'Plein écran' : 'Fullscreen');
+}
+
+async function exportPlanningPdf() {
+  var container = document.querySelector('#planning-view .planning-container');
+  var table = container ? container.querySelector('.planning-table') : null;
+  if (!table) { showToast(currentLang === 'fr' ? 'Affichez d\'abord le Planning' : 'Open Planning first', 'error'); return; }
+  if (typeof html2canvas === 'undefined' || !window.jspdf) {
+    showToast(currentLang === 'fr' ? 'Librairies PDF non chargées' : 'PDF libraries not loaded', 'error');
+    return;
+  }
+  showToast(currentLang === 'fr' ? 'Génération du PDF...' : 'Generating PDF...', 'info');
+  container.classList.add('gantt-exporting');
+  try {
+    var canvas = await html2canvas(table, { scale: 2, backgroundColor: '#ffffff', windowWidth: table.scrollWidth, windowHeight: table.scrollHeight });
+    container.classList.remove('gantt-exporting');
+    var imgData = canvas.toDataURL('image/png');
+    var jsPDF = window.jspdf.jsPDF;
+    var w = canvas.width, h = canvas.height;
+    var pdf = new jsPDF({ orientation: w >= h ? 'landscape' : 'portrait', unit: 'px', format: [w, h], hotfixes: ['px_scaling'] });
+    pdf.addImage(imgData, 'PNG', 0, 0, w, h);
+    var dateStr = new Date().toISOString().split('T')[0];
+    pdf.save('Planning_' + dateStr + '.pdf');
+    showToast(currentLang === 'fr' ? 'PDF exporté ✓' : 'PDF exported ✓', 'success');
+  } catch (e) {
+    container.classList.remove('gantt-exporting');
+    console.error('exportPlanningPdf:', e);
+    showToast((currentLang === 'fr' ? 'Erreur export PDF : ' : 'PDF export error: ') + e.message, 'error');
+  }
+}
+
+function onPlanningDayClick(user, taskId, date) {
+  if (taskId) {
+    openEditTaskModal(taskId);
+  } else {
+    // Open new task modal with assignee and date pre-filled
+    startNewTask(null, date, { assignee: user });
+  }
+}
+
+// =============================================================================
 // TEMPLATES VIEW
 // =============================================================================
 
@@ -6114,6 +6660,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   setField(record, 'tasks', 'title', prefill.title || '');
   setField(record, 'tasks', 'status', defaultStatus || (statuses[0] && statuses[0].key) || 'todo');
   setField(record, 'tasks', 'priority', prefill.priority || 'medium');
+  if (prefill.assignee) setField(record, 'tasks', 'assignee', prefill.assignee);
   if (prefill.description) setField(record, 'tasks', 'description', prefill.description);
   if (prefill.category) setField(record, 'tasks', 'category', prefill.category);
   if (prefill.group) setField(record, 'tasks', 'group', prefill.group);
@@ -7988,6 +8535,7 @@ var WIDGET_TABS = [
   { id: 'kanban',    label_fr: 'Kanban',       label_en: 'Kanban' },
   { id: 'table',     label_fr: 'Tableau',      label_en: 'Table' },
   { id: 'gantt',     label_fr: 'Gantt',        label_en: 'Gantt' },
+  { id: 'planning',  label_fr: 'Planning',     label_en: 'Planning' },
   { id: 'templates', label_fr: 'Templates',    label_en: 'Templates',  ownerOnly: true },
   { id: 'stats',     label_fr: 'Stats',        label_en: 'Stats',      ownerOnly: true },
   { id: 'team',      label_fr: 'Équipe',       label_en: 'Team',       ownerOnly: true },
@@ -8052,7 +8600,7 @@ function isTabAllowed(tabId) {
 }
 
 function applyOwnerRestrictions() {
-  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'templates', 'stats', 'team', 'settings'];
+  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'planning', 'templates', 'stats', 'team', 'settings'];
   allTabs.forEach(function(tab) {
     var el = document.querySelector('[data-tab="' + tab + '"]');
     if (el) el.style.display = isTabAllowed(tab) ? '' : 'none';

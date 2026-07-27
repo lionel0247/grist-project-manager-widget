@@ -767,13 +767,15 @@
     body.dark-mode .btn-secondary:hover:not(:disabled) {
       background: #334155; color: #f1f5f9;
     }
-    /* Boutons de mode Gantt : actif clairement signalé en rouge */
-    [data-gantt-mode].active {
+    /* Boutons de mode Gantt/Planning : actif clairement signalé en rouge */
+    [data-gantt-mode].active,
+    [data-planning-mode].active {
       background: #ef4444 !important;
       color: white !important;
       border-color: #ef4444 !important;
     }
-    [data-gantt-mode].active:hover:not(:disabled) {
+    [data-gantt-mode].active:hover:not(:disabled),
+    [data-planning-mode].active:hover:not(:disabled) {
       background: #dc2626 !important;
       color: white !important;
     }
@@ -1564,7 +1566,8 @@
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
-    .gantt-controls select, .gantt-controls button {
+    .gantt-controls select, .gantt-controls button,
+    .planning-controls select, .planning-controls button {
       padding: 6px 12px;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
@@ -1572,13 +1575,16 @@
       background: white;
       cursor: pointer;
     }
-    .gantt-controls button:hover { background: #f1f5f9; }
-    .gantt-controls .gantt-today {
+    .gantt-controls button:hover,
+    .planning-controls button:hover { background: #f1f5f9; }
+    .gantt-controls .gantt-today,
+    .planning-controls .gantt-today {
       color: #ef4444;
       font-weight: 700;
       border-color: #fecaca;
     }
-    .gantt-view-btns .active { background: #1e293b; color: white; border-color: #1e293b; }
+    .gantt-view-btns .active,
+    .planning-view-btns .active { background: #ef4444; color: white; border-color: #ef4444; }
     .gantt-container {
       background: white;
       border: 1px solid #e2e8f0;
@@ -3827,7 +3833,9 @@
     }
     /* Gantt dark mode */
     body.dark-mode .gantt-controls select,
-    body.dark-mode .gantt-controls button {
+    body.dark-mode .gantt-controls button,
+    body.dark-mode .planning-controls select,
+    body.dark-mode .planning-controls button {
       background: #334155;
       border-color: #475569;
       color: #e2e8f0;
@@ -3864,6 +3872,78 @@
       background: #1e293b;
       color: #94a3b8;
       border-color: #334155;
+    }
+    /* Planning view styles */
+    .planning-container {
+      overflow-x: auto;
+      max-height: calc(100vh - 250px);
+    }
+    .planning-table {
+      border-collapse: collapse;
+    }
+    .planning-table th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      padding: 4px 6px;
+      border: 1px solid #e2e8f0;
+    }
+    .planning-table td {
+      border: 1px solid #e2e8f0;
+      height: 32px;
+      padding: 0;
+      position: relative;
+    }
+    .planning-row {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .planning-row:hover {
+      background: #fafbfc;
+    }
+    .planning-user-label {
+      text-align: left;
+      padding: 8px 12px;
+      vertical-align: top;
+    }
+    .planning-user-expand {
+      cursor: pointer;
+      margin-right: 6px;
+      display: inline-block;
+      width: 16px;
+      text-align: center;
+      user-select: none;
+    }
+    .planning-user-expand:hover {
+      opacity: 0.7;
+    }
+    .planning-cell {
+      padding: 0;
+      position: relative;
+    }
+    body.dark-mode .planning-table th {
+      background: #1e293b;
+      color: #f1f5f9;
+      border-color: #334155;
+    }
+    body.dark-mode .planning-table td {
+      border-color: #334155;
+    }
+    body.dark-mode .planning-row:hover {
+      background: #334155;
+    }
+    body.dark-mode .planning-user-label {
+      color: #f1f5f9;
+    }
+    body.dark-mode .planning-user-expand {
+      color: #94a3b8;
+    }
+    body.dark-mode .planning-cell {
+      background: #1e293b;
     }
     /* Team section dark mode */
     body.dark-mode .team-section {
@@ -4057,6 +4137,7 @@
           <button class="tab-btn" data-tab="kanban" onclick="switchTab('kanban')">📋 <span data-i18n="tabKanban">Kanban</span></button>
           <button class="tab-btn" data-tab="table" onclick="switchTab('table')">📊 <span data-i18n="tabTable">Tableau</span></button>
           <button class="tab-btn" data-tab="gantt" onclick="switchTab('gantt')">📐 <span data-i18n="tabGantt">Gantt</span></button>
+          <button class="tab-btn" data-tab="planning" onclick="switchTab('planning')">🗓️ <span data-i18n="tabPlanning">Planning</span></button>
           <button class="tab-btn" data-tab="templates" onclick="switchTab('templates')">🎨 <span data-i18n="tabTemplates">Templates</span></button>
           <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">📈 <span data-i18n="tabStats">Stats</span></button>
           <button class="tab-btn" data-tab="team" onclick="switchTab('team')">👥 <span data-i18n="tabTeam">Équipe</span></button>
@@ -4264,6 +4345,43 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- TAB: PLANNING -->
+    <div class="tab-content" id="tab-planning">
+      <div class="section-title">
+        <h2 data-i18n="planningTitle">Planning des personnes</h2>
+        <p data-i18n="planningSubtitle">Visualisez les tâches assignées par personne</p>
+      </div>
+      <div class="planning-controls">
+        <button class="btn-secondary btn-sm" onclick="planningNav(-1)">◀</button>
+        <span data-i18n="ganttYear">Année :</span>
+        <select id="planning-year" onchange="setPlanningYear(this.value)"></select>
+        <button class="gantt-today btn-sm" onclick="planningToday()" data-i18n="ganttToday">Aujourd'hui</button>
+        <button class="btn-secondary btn-sm" onclick="planningNav(1)">▶</button>
+        <div style="flex:1;"></div>
+        <div style="display:flex;gap:4px;">
+          <button class="btn-secondary btn-sm" onclick="planningExpandAll()" title="Tout déplier">⊞</button>
+          <button class="btn-secondary btn-sm" onclick="planningCollapseAll()" title="Tout replier">⊟</button>
+          <button class="btn-secondary btn-sm" id="planning-fullscreen-btn" onclick="togglePlanningFullscreen()" title="Plein écran">⛶</button>
+          <button class="btn-secondary btn-sm" onclick="exportPlanningPdf()" title="Export PDF" data-i18n-title="exportPdf">📄 PDF</button>
+        </div>
+        <div class="gantt-view-btns" style="display:flex;gap:4px;">
+          <button class="btn-secondary btn-sm active" onclick="setPlanningMode('days')" data-planning-mode="days" data-i18n="ganttDays">Jours</button>
+          <button class="btn-secondary btn-sm" onclick="setPlanningMode('weeks')" data-planning-mode="weeks" data-i18n="ganttWeeks">Semaines</button>
+          <button class="btn-secondary btn-sm" onclick="setPlanningMode('months')" data-planning-mode="months" data-i18n="ganttMonths">Mois</button>
+          <button class="btn-secondary btn-sm" onclick="setPlanningMode('year')" data-planning-mode="year" data-i18n="ganttYear2">Année</button>
+          <button class="btn-secondary btn-sm" onclick="setPlanningMode('twoyears')" data-planning-mode="twoyears" data-i18n="ganttTwoYears">2 Ans</button>
+          <button class="btn-secondary btn-sm" onclick="setPlanningMode('custom')" data-planning-mode="custom" data-i18n="ganttCustom">Personnalisé</button>
+        </div>
+      </div>
+      <div id="planning-custom-range" style="display:none;align-items:center;gap:8px;padding:6px 0 0;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#64748b;" data-i18n="ganttRangeFrom">Du :</span>
+        <input type="date" id="planning-custom-start" onchange="setPlanningCustomRange()" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+        <span style="font-size:12px;color:#64748b;" data-i18n="ganttRangeTo">au :</span>
+        <input type="date" id="planning-custom-end" onchange="setPlanningCustomRange()" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+      </div>
+      <div id="planning-view"></div>
     </div>
 
     <!-- TAB: TEMPLATES -->
