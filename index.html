@@ -3894,9 +3894,23 @@
     }
     .planning-table td {
       border: 1px solid #e2e8f0;
-      height: 32px;
+      min-height: 32px;
       padding: 0;
       position: relative;
+    }
+    .planning-table td.gantt-task-label {
+      position: sticky;
+      left: 0;
+      background: white;
+      z-index: 10;
+    }
+    /* Grisage des week-ends dans le planning */
+    .planning-table th.weekend {
+      background: #f8fafc;
+      color: #cbd5e1;
+    }
+    .planning-cell.weekend-col {
+      background: #fafbfc;
     }
     .planning-row {
       cursor: pointer;
@@ -3924,6 +3938,11 @@
     .planning-cell {
       padding: 0;
       position: relative;
+      vertical-align: top;
+    }
+    .planning-cell .gantt-bar {
+      margin: 1px;
+      height: 22px !important;
     }
     body.dark-mode .planning-table th {
       background: #1e293b;
@@ -3938,6 +3957,16 @@
     }
     body.dark-mode .planning-user-label {
       color: #f1f5f9;
+    }
+    body.dark-mode .planning-table td.gantt-task-label {
+      background: #0f172a;
+    }
+    body.dark-mode .planning-table th.weekend {
+      background: #334155;
+      color: #64748b;
+    }
+    body.dark-mode .planning-cell.weekend-col {
+      background: #1e293b;
     }
     body.dark-mode .planning-user-expand {
       color: #94a3b8;

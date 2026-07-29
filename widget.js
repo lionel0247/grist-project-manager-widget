@@ -893,6 +893,29 @@ function initPlanningUsersExpanded() {
       });
     }
   });
+  
+  // Appliquer le même filtre que dans renderPlanningView
+  if (currentFilterAssignee) {
+    var filterIdentSet = personIdentSet(currentFilterAssignee);
+    Object.keys(allUsers).forEach(function(userId) {
+      var keep = false;
+      if (filterIdentSet[String(userId).toLowerCase().trim()]) keep = true;
+      var u = findUserByIdent(userId);
+      if (u) {
+        if (u.Email && filterIdentSet[String(u.Email).toLowerCase().trim()]) keep = true;
+        if (u.Name && filterIdentSet[String(u.Name).toLowerCase().trim()]) keep = true;
+      }
+      if (!keep) delete allUsers[userId];
+    });
+  } else if (currentFilterRole) {
+    Object.keys(allUsers).forEach(function(userId) {
+      var u = findUserByIdent(userId);
+      if (u && !userMatchesRole(u, currentFilterRole)) {
+        delete allUsers[userId];
+      }
+    });
+  }
+  
   Object.keys(allUsers).forEach(function(user) {
     expandedPlanningUsers[user] = true;
   });
@@ -5402,6 +5425,30 @@ function renderPlanningView() {
 
   var sortedUsers = Object.keys(tasksByUser).sort();
 
+  // Si un filtre par personne ou rôle est actif, ne montrer que les utilisateurs correspondants
+  if (currentFilterAssignee) {
+    var filterIdentSet = personIdentSet(currentFilterAssignee);
+    sortedUsers = sortedUsers.filter(function(userId) {
+      // Vérifier si cet identifiant ou l'utilisateur correspondant match le filtre
+      if (filterIdentSet[String(userId).toLowerCase().trim()]) return true;
+      var u = findUserByIdent(userId);
+      if (u) {
+        if (u.Email && filterIdentSet[String(u.Email).toLowerCase().trim()]) return true;
+        if (u.Name && filterIdentSet[String(u.Name).toLowerCase().trim()]) return true;
+      }
+      return false;
+    });
+  } else if (currentFilterRole) {
+    // Filtre par rôle : ne montrer que les utilisateurs de ce rôle
+    sortedUsers = sortedUsers.filter(function(userId) {
+      var u = findUserByIdent(userId);
+      if (u) {
+        return userMatchesRole(u, currentFilterRole);
+      }
+      return false;
+    });
+  }
+
   // Determine date range based on mode
   var startDate, endDate, headers = [];
 
@@ -5493,7 +5540,7 @@ function renderPlanningView() {
   html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colAssignee') + '</th>';
   for (var hi = 0; hi < headers.length; hi++) {
     var h = headers[hi];
-    html += '<th style="min-width:' + (planningMode === 'days' ? '40px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '">';
+    html += '<th style="min-width:' + (planningMode === 'days' ? '55px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '"' + (h.isWeekend ? ' class="weekend"' : '') + '>';
     html += '<div style="font-size:' + (planningMode === 'days' ? '9px' : '11px') + ';font-weight:800;">' + h.label + '</div>';
     if (h.subtitle) {
       html += '<div style="font-size:' + (planningMode === 'days' ? '8px' : '9px') + ';font-weight:400;color:#94a3b8;">' + h.subtitle + '</div>';
@@ -5525,8 +5572,6 @@ function renderPlanningView() {
       var cellStart = h2.start;
       var cellEnd = h2.end;
       
-      html += '<td class="gantt-cell planning-cell" style="position:relative;padding:0;" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
-      
       // Find all tasks for this user that overlap with this period
       var overlappingTasks = userTasks.filter(function(task) {
         var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5538,6 +5583,10 @@ function renderPlanningView() {
         
         return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
       });
+      
+      // Calculate height to contain stacked tasks (24px per task)
+      var cellMinHeight = Math.max(24, overlappingTasks.length * 24);
+      html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px;" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
       
       // Render each overlapping task as a bar in this cell
       var barIndex = 0;
@@ -5562,11 +5611,11 @@ function renderPlanningView() {
         
         if (widthPercent > 2) {
           // Stack bars vertically to avoid overlap
-          var topOffset = barIndex * 20; // 20px offset for each additional task
+          var topOffset = barIndex * 24; // 24px offset for each additional task (matches bar height)
           var tooltip = sanitize(task.Title || '') + '\n' + 
                         (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(task.Status || '') + '\n' +
                         (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(task.Priority || '');
-          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '\\n') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
+          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '\\n') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
           if (widthPercent > 30) {
             html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
           }
@@ -5621,7 +5670,8 @@ function generatePlanningHeadersDays(startDate, endDate, dayNames, monthNamesSho
       subtitle: current.getDate() + ' ' + monthNamesShort[current.getMonth()],
       start: dayStart,
       end: dayEnd,
-      isCurrent: isCurrentDay
+      isCurrent: isCurrentDay,
+      isWeekend: current.getDay() === 0 || current.getDay() === 6
     });
     current.setDate(current.getDate() + 1);
   }
@@ -5677,7 +5727,8 @@ function generatePlanningHeadersCustom(startDate, endDate, lang) {
         subtitle: current.getDate() + ' ' + monthNamesShort[current.getMonth()],
         start: dayStart,
         end: dayEnd,
-        isCurrent: isCurrentDay
+        isCurrent: isCurrentDay,
+        isWeekend: current.getDay() === 0 || current.getDay() === 6
       });
       current.setDate(current.getDate() + 1);
     }
@@ -5771,6 +5822,29 @@ function planningExpandAll() {
       });
     }
   });
+  
+  // Appliquer le même filtre que dans renderPlanningView
+  if (currentFilterAssignee) {
+    var filterIdentSet = personIdentSet(currentFilterAssignee);
+    Object.keys(allUsers).forEach(function(userId) {
+      var keep = false;
+      if (filterIdentSet[String(userId).toLowerCase().trim()]) keep = true;
+      var u = findUserByIdent(userId);
+      if (u) {
+        if (u.Email && filterIdentSet[String(u.Email).toLowerCase().trim()]) keep = true;
+        if (u.Name && filterIdentSet[String(u.Name).toLowerCase().trim()]) keep = true;
+      }
+      if (!keep) delete allUsers[userId];
+    });
+  } else if (currentFilterRole) {
+    Object.keys(allUsers).forEach(function(userId) {
+      var u = findUserByIdent(userId);
+      if (u && !userMatchesRole(u, currentFilterRole)) {
+        delete allUsers[userId];
+      }
+    });
+  }
+  
   Object.keys(allUsers).forEach(function(user) {
     expandedPlanningUsers[user] = true;
   });
