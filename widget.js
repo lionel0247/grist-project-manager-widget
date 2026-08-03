@@ -6913,6 +6913,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + '</select></div>';
   html += '</div>';
 
+/* Pour ne pas afficher la sous-fenêtre des sous-taches dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
   // === SUBTASKS SECTION ===
   var taskSubtasks = getTaskSubtasks(task.id);
   html += '<div class="subtasks-section">';
@@ -7069,7 +7070,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<button class="subtask-add-btn" onclick="addSubtask(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
+  */  // fin pour ne pas afficher la sous-fenêtre des sous-taches dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
 
+  /*  // fin pour ne pas afficher la sous-fenêtre des dépendance dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
   // === DEPENDENCIES SECTION ===
   var taskDeps = getTaskDependencies(task.id);
   var taskBlocks = getTasksDependingOn(task.id);
@@ -7128,7 +7131,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<button class="dep-add-btn" onclick="addDependency(' + task.id + ')">+</button>';
   html += '</div>';
   html += '</div>';
+*/  // fin pour ne pas afficher la sous-fenêtre des dépendance dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
 
+/* Pour ne pas afficher la sous-fenêtre des champs personnalisés dans l'éditeur de tâche - A supprimer si besoin des champs personnalisés dans l'éditeur
   // === CUSTOM FIELDS SECTION ===
   if (customFields.length > 0) {
     html += '<div class="custom-fields-section">';
@@ -7158,7 +7163,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '<div class="cf-empty">' + t('noCustomFields') + '</div>';
     html += '</div>';
   }
+*/   // fin pour ne pas afficher la sous-fenêtre des champs personnalisés dans l'éditeur de tâche - A supprimer si besoin des champs personnalisés dans l'éditeur
 
+  /* Pour ne pas afficher la sous-fenêtre des pièces jointes dans l'éditeur de tâche - A supprimer si besoin des pièces jointes dans l'éditeur
   // === ATTACHMENTS SECTION (D2) ===
   html += '<div class="attachments-section">';
   html += '<div class="comments-header">';
@@ -7173,6 +7180,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
   html += '<div class="attach-hint">' + (currentLang === 'fr' ? 'Tous formats · max 5 Mo par fichier (images compressées automatiquement)' : 'All formats · max 5MB per file (images auto-compressed)') + '</div>';
   html += '</div>';
+  */ // fin pour ne pas afficher la sous-fenêtre des pièces jointes dans l'éditeur de tâche - A supprimer si besoin des pièces jointes dans l'éditeur
 
   // === COMMENTS SECTION ===
   var taskComments = getTaskComments(task.id);
@@ -7244,12 +7252,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-info-row"><span class="info-label">' + t('fieldAssignee') + ' :</span><span class="info-value">' + editAssignees.length + '</span></div>';
   html += '</div>';
 
+  /* Pour ne pas afficher la sous-fenêtre du suivi du temps dans l'éditeur de tâche - A supprimer si besoin du suivi du temps dans l'éditeur
   // Time Tracking card
   var totalTime = getTaskTotalTime(task.id);
   var isTimerRunning = !!activeTimers[task.id];
   var taskTimeEntries = getTaskTimeEntries(task.id);
   html += '<div class="detail-card time-card">';
   html += '<h4>⏱️ ' + t('timeTracking') + '</h4>';
+  
   
   // Timer button
   html += '<div class="timer-control">';
@@ -7294,7 +7304,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '</div>';
   }
   html += '</div>';
+*/   // fin pour ne pas afficher la sous-fenêtre du suivi du temps dans l'éditeur de tâche - A supprimer si besoin du suivi du temps dans l'éditeur
 
+/* Pour ne pas afficher la sous-fenêtre de l'extension dans l'éditeur de tâche - A supprimer si besoin de l'extension dans l'éditeur
   // Extension card
   html += '<div class="detail-card">';
   html += '<h4>📏 ' + t('extensionDate') + '</h4>';
@@ -7305,6 +7317,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<span style="font-size:11px;color:#64748b;line-height:1.3;">' + t('autoExtendHint') + '</span>';
   html += '</label>';
   html += '</div>';
+  */   // fin pour ne pas afficher la sous-fenêtre de l'extension dans l'éditeur de tâche - A supprimer si besoin de l'extension dans l'éditeur
 
   // Recurrence card
   var hasRecurrence = task.Recurrence && task.Recurrence !== 'none';
