@@ -14,6 +14,7 @@ var i18n = {
     tabTable: 'Tableau',
     tabGantt: 'Gantt',
     tabPlanning: 'Planning',
+    tabProjectList: 'Projets',
     tabTemplates: 'Templates',
     newTask: 'Nouvelle tâche',
     newProject: 'Nouveau projet',
@@ -28,6 +29,8 @@ var i18n = {
     addTask: '+ Ajouter une tâche',
     tableTitle: 'Tableau de Gestion',
     tableSubtitle: 'Gérez vos tâches avec édition inline avancée',
+    projectListTitle: 'Liste des Projets',
+    projectListSubtitle: 'Voir les projets et leurs tâches associées',
     searchPlaceholder: 'Rechercher une tâche...',
     allStatuses: 'Tous les statuts',
     allPriorities: 'Toutes priorités',
@@ -359,6 +362,7 @@ var i18n = {
     tabTable: 'Table',
     tabGantt: 'Gantt',
     tabPlanning: 'Planning',
+    tabProjectList: 'Project List',
     tabTemplates: 'Templates',
     newTask: 'New task',
     newProject: 'New project',
@@ -373,6 +377,8 @@ var i18n = {
     addTask: '+ Add a task',
     tableTitle: 'Management Table',
     tableSubtitle: 'Manage your tasks with advanced inline editing',
+    projectListTitle: 'Project List',
+    projectListSubtitle: 'View projects and their associated tasks',
     searchPlaceholder: 'Search a task...',
     allStatuses: 'All statuses',
     allPriorities: 'All priorities',
@@ -756,6 +762,8 @@ var kanbanGroupBy = 'status'; // 'status' | 'priority' | 'project'
 var kanbanSort = 'manual'; // 'manual' | 'alpha' | 'alpha-desc' | 'due'
 var expandedKanbanCards = {}; // taskId -> true quand la tuile est dépliée (A2)
 var collapsedKanbanCols = {}; // col.key -> true when collapsed
+var expandedProjectListProjects = {}; // projectId -> true quand déplié (par défaut true pour tous)
+var allProjectListTasksExpanded = true; // état global pour tout déplier/replier
 
 var defaultKanbanStatuses = [
   { key: 'todo',     label_fr: 'À faire',   label_en: 'To do',        color: '#f59e0b', cssClass: 'col-todo' },
@@ -1790,6 +1798,7 @@ function switchTab(tabId) {
   if (tabId === 'table') renderTableView();
   if (tabId === 'gantt') renderGanttView();
   if (tabId === 'planning') renderPlanningView();
+  if (tabId === 'projectList') renderProjectListView();
   if (tabId === 'templates') renderTemplatesView();
   if (tabId === 'stats') renderStatsView();
   if (tabId === 'team') renderTeamView();
@@ -3216,6 +3225,7 @@ function refreshAllViews() {
     if (tab === 'table') renderTableView();
     if (tab === 'gantt') renderGanttView();
     if (tab === 'planning') renderPlanningView();
+    if (tab === 'projectList') renderProjectListView();
     if (tab === 'templates') renderTemplatesView();
     if (tab === 'stats') renderStatsView();
     if (tab === 'team') renderTeamView();
@@ -3807,6 +3817,31 @@ function toggleCardExpand(taskId, ev) {
   renderKanbanView();
 }
 
+// Déplier/Replier les tâches d'un projet dans la vue Liste Projets
+function toggleProjectListProject(projectId, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (expandedProjectListProjects[projectId] === false) {
+    expandedProjectListProjects[projectId] = true;
+  } else {
+    expandedProjectListProjects[projectId] = false;
+  }
+  renderProjectListView();
+}
+
+// Déplier/Replier TOUTES les tâches dans la vue Liste Projets
+function toggleAllProjectListTasks() {
+  allProjectListTasksExpanded = !allProjectListTasksExpanded;
+  if (allProjectListTasksExpanded) {
+    expandedProjectListProjects = {}; // Tout déplié par défaut
+  } else {
+    // Tout replier
+    for (var i = 0; i < projects.length; i++) {
+      expandedProjectListProjects[projects[i].id] = false;
+    }
+  }
+  renderProjectListView();
+}
+
 // Cocher/décocher une sous-tâche depuis le panneau déplié d'une tuile
 async function toggleSubtaskFromCard(subtaskId, completed) {
   try {
@@ -4370,6 +4405,144 @@ function renderTableView() {
     if (btn) { btn.textContent = '▼'; btn.classList.add('expanded'); }
   });
   if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
+}
+
+function renderProjectListView() {
+  var search = (document.getElementById('project-list-search').value || '').toLowerCase();
+  
+  // Récupérer les tâches déjà filtrées selon les critères globaux
+  var filteredTasks = getFilteredTasks();
+  
+  // Collecter les IDs de projets qui ont des tâches correspondant aux filtres
+  var projectIdsWithTasks = {};
+  filteredTasks.forEach(function(task) {
+    if (task.Project_Id) {
+      projectIdsWithTasks[task.Project_Id] = true;
+    }
+  });
+  
+  // Si un projet spécifique est sélectionné, on n'affiche que ce projet
+  var projectsToShow = [];
+  if (currentProjectId) {
+    var proj = projects.find(function(p) { return p.id === currentProjectId; });
+    if (proj) projectsToShow.push(proj);
+  } else if (mineOnly) {
+    // Afficher seulement mes projets (créés par moi ou où je suis responsable/assigné)
+    var myIds = myProjectIdSet();
+    projectsToShow = projects.filter(function(p) { return myIds[p.id]; });
+  } else {
+    // Afficher les projets qui ont des tâches correspondant aux filtres
+    // ou tous les projets s'il n'y a pas de tâches du tout
+    if (Object.keys(projectIdsWithTasks).length > 0) {
+      projectsToShow = projects.filter(function(p) { return projectIdsWithTasks[p.id]; });
+    } else {
+      // Si aucune tâche ne correspond aux filtres, afficher tous les projets
+      // mais seulement ceux qui ont des tâches (ou tous s'il n'y a pas de tâches du tout)
+      var allProjectIdsWithTasks = {};
+      tasks.forEach(function(task) {
+        if (task.Project_Id && task.Status !== 'archived') {
+          allProjectIdsWithTasks[task.Project_Id] = true;
+        }
+      });
+      projectsToShow = projects.filter(function(p) { 
+        return allProjectIdsWithTasks[p.id] || Object.keys(allProjectIdsWithTasks).length === 0; 
+      });
+    }
+  }
+  
+  // Appliquer la recherche locale sur les projets sélectionnés
+  var filteredProjects = projectsToShow.filter(function(project) {
+    if (search) {
+      var projectText = (project.Name || '') + ' ' + (project.Description || '') + ' ' + (project.Lead || '');
+      if (projectText.toLowerCase().indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+  
+  // Si aucun projet, afficher un message
+  if (filteredProjects.length === 0) {
+    var html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t('noProject') + '</div>';
+    document.getElementById('project-list-view').innerHTML = html;
+    return;
+  }
+  
+  // Trier les projets par nom
+  filteredProjects.sort(function(a, b) {
+    return (a.Name || '').localeCompare(b.Name || '');
+  });
+  
+  var html = '<table class="data-table">';
+  html += '<thead><tr>';
+  html += '<th style="width:30px;text-align:center;"><button class="toggle-all-btn" onclick="toggleAllProjectListTasks()" title="' + (currentLang === 'fr' ? 'Tout déplier/replier' : 'Expand/Collapse all') + '">' + (allProjectListTasksExpanded ? '-' : '+') + '</button></th>';
+  html += '<th style="text-align:left;">' + (currentLang === 'fr' ? 'Projet' : 'Project') + '</th>';
+  html += '<th>' + (currentLang === 'fr' ? 'Statut' : 'Status') + '</th>';
+  html += '<th>' + (currentLang === 'fr' ? 'Responsable' : 'Lead') + '</th>';
+  html += '<th>' + t('colAssignee') + '</th>';
+  html += '<th>' + t('colStartDate') + '</th>';
+  html += '<th>' + t('colDueDate') + '</th>';
+  html += '<th>' + t('colPriority') + '</th>';
+  html += '<th>' + t('colActions') + '</th>';
+  html += '</tr></thead><tbody>';
+  
+  // Pour chaque projet, afficher une ligne avec les informations du projet
+  // puis les lignes des tâches associées
+  for (var pi = 0; pi < filteredProjects.length; pi++) {
+    var project = filteredProjects[pi];
+    var projectColor = project.Color || '#6366f1';
+    var projectLead = getUserDisplayName(project.Lead || '');
+    
+    // Filtrer les tâches pour ce projet (en utilisant les tâches déjà filtrées)
+    var projectTasks = filteredTasks.filter(function(task) {
+      return task.Project_Id === project.id;
+    });
+    
+    // Trier les tâches par priorité puis par date d'échéance
+    projectTasks.sort(function(a, b) {
+      var priorityOrder = { high: 0, medium: 1, low: 2 };
+      var pa = priorityOrder[a.Priority] !== undefined ? priorityOrder[a.Priority] : 3;
+      var pb = priorityOrder[b.Priority] !== undefined ? priorityOrder[b.Priority] : 3;
+      if (pa !== pb) return pa - pb;
+      return (a.Due_Date || 0) - (b.Due_Date || 0);
+    });
+    
+    // Ligne du projet
+    var isProjectExpanded = expandedProjectListProjects[project.id] !== false;
+    html += '<tr class="project-row" style="background:#f8fafc;border-left:4px solid ' + projectColor + ';" data-project-id="' + project.id + '">';
+    html += '<td style="text-align:center;"><button class="toggle-btn" onclick="toggleProjectListProject(' + project.id + ', event)" title="' + (currentLang === 'fr' ? 'Déplier/Replier les tâches' : 'Expand/Collapse tasks') + '">' + (isProjectExpanded ? '-' : '+') + '</button></td>';
+    html += '<td style="font-weight:700;padding-left:12px;">' + sanitize(project.Name) + (project.Description ? '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(project.Description) + '</div>' : '') + '</td>';
+    html += '<td><span class="status-badge">● ' + (currentLang === 'fr' ? (project.Status === 'active' ? 'Actif' : project.Status === 'completed' ? 'Terminé' : project.Status === 'archived' ? 'Archivé' : project.Status) : (project.Status === 'active' ? 'Active' : project.Status === 'completed' ? 'Completed' : project.Status === 'archived' ? 'Archived' : project.Status)) + '</span></td>';
+    html += '<td>' + (projectLead ? '<span class="assignee-chip">👤 ' + sanitize(projectLead) + '</span>' : '') + '</td>';
+    html += '<td colspan="4"></td>';
+    html += '<td>' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</td>';
+    html += '</tr>';
+    
+    // Lignes des tâches du projet
+    if (projectTasks.length > 0) {
+      var displayStyle = isProjectExpanded ? '' : 'display:none;';
+      for (var ti = 0; ti < projectTasks.length; ti++) {
+        var task = projectTasks[ti];
+        var statusClass = 'status-' + task.Status;
+        var overdueHtml = isOverdue(task) ? ' ⚠️' : '';
+        var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
+        var assigneeDisplay = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
+        
+        html += '<tr class="project-task-row" data-project-id="' + project.id + '" style="padding-left:30px;background:transparent;' + displayStyle + '" onclick="openEditTaskModal(' + task.id + ')">';
+        html += '<td></td>'; // Cellule vide pour la colonne du bouton
+        html += '<td><div style="display:flex;align-items:center;gap:8px;"><span style="width:16px;flex-shrink:0;">└</span><div style="font-weight:600;">' + sanitize(task.Title) + '</div></div></td>';
+        html += '<td><span class="status-badge ' + statusClass + '">● ' + statusLabel(task.Status) + '</span></td>';
+        html += '<td></td>';
+        html += '<td>' + (assigneeDisplay ? '<span class="assignee-chip">👤 ' + sanitize(assigneeDisplay) + '</span>' : '') + '</td>';
+        html += '<td>' + (task.Start_Date ? formatDate(task.Start_Date) : t('notDefined')) + '</td>';
+        html += '<td style="' + (isOverdue(task) ? 'color:#dc2626;font-weight:700;' : '') + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t('noDate')) + '</td>';
+        html += '<td><span class="priority-dot ' + dotClass + '"></span> ' + priorityLabel(task.Priority) + '</td>';
+        html += '<td onclick="event.stopPropagation();">' + (isOwner ? '<button class="btn-icon" onclick="deleteTask(' + task.id + ')">🗑️</button>' : '') + '</td>';
+        html += '</tr>';
+      }
+    }
+  }
+  
+  html += '</tbody></table>';
+  document.getElementById('project-list-view').innerHTML = html;
 }
 
 function toggleSubtasks(taskId) {
@@ -8623,6 +8796,7 @@ var WIDGET_TABS = [
   { id: 'table',     label_fr: 'Tableau',      label_en: 'Table' },
   { id: 'gantt',     label_fr: 'Gantt',        label_en: 'Gantt' },
   { id: 'planning',  label_fr: 'Planning',     label_en: 'Planning' },
+  { id: 'projectList', label_fr: 'Projets', label_en: 'Projects' },
   { id: 'templates', label_fr: 'Templates',    label_en: 'Templates',  ownerOnly: true },
   { id: 'stats',     label_fr: 'Stats',        label_en: 'Stats',      ownerOnly: true },
   { id: 'team',      label_fr: 'Équipe',       label_en: 'Team',       ownerOnly: true },
@@ -8687,7 +8861,7 @@ function isTabAllowed(tabId) {
 }
 
 function applyOwnerRestrictions() {
-  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'planning', 'templates', 'stats', 'team', 'settings'];
+  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'planning', 'projectList', 'templates', 'stats', 'team', 'settings'];
   allTabs.forEach(function(tab) {
     var el = document.querySelector('[data-tab="' + tab + '"]');
     if (el) el.style.display = isTabAllowed(tab) ? '' : 'none';
