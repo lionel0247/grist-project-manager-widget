@@ -2696,6 +2696,7 @@ function renderProjectSelector() {
     var label = u.Name || u.Email;
     if (val) personOptions.push({ value: val, label: label });
   });
+  personOptions.sort(function(a, b) { return a.label.localeCompare(b.label); });
   html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, currentFilterAssignee, filterByAssignee);
 
   // Filtre Catégorie
@@ -2731,8 +2732,9 @@ function renderProjectSelector() {
   html += '</div>';
   // Project options — first 5 visible, rest hidden until search
   var allTasksForCount = tasks;
-  var extraCount = Math.max(0, visibleProjects.length - PROJ_INITIAL_LIMIT);
-  visibleProjects.forEach(function(proj, idx) {
+  var sortedProjects = visibleProjects.slice().sort(function(a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+  var extraCount = Math.max(0, sortedProjects.length - PROJ_INITIAL_LIMIT);
+  sortedProjects.forEach(function(proj, idx) {
     var taskCount = allTasksForCount.filter(function(tt) { return tt.Project_Id === proj.id; }).length;
     var isSelected = currentProjectId === proj.id;
     var safeName = sanitize(proj.Name || '');
