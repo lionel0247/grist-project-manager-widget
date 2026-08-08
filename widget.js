@@ -2723,7 +2723,7 @@ function renderProjectSelector() {
   html += '</button>';
   html += '<div class="proj-dropdown" id="project-dropdown">';
   html += '<div class="proj-dropdown-search"><input type="text" id="proj-search-input" placeholder="' + (currentLang === 'fr' ? 'Rechercher...' : 'Search...') + '" oninput="filterProjectDropdown(this.value)" autocomplete="off"></div>';
-  var PROJ_INITIAL_LIMIT = 5;
+  var PROJ_INITIAL_LIMIT = 500;  // Mis arbitrairement à 500 pour ne pas limiter l'affichage des projets dans la liste déroulante (initialement à 5)
   html += '<div class="proj-dropdown-list" id="proj-dropdown-list">';
   // "All projects" option (always shown)
   html += '<div class="proj-option' + (!currentProjectId ? ' selected' : '') + '" data-id="" data-name="" data-always="1" onclick="selectProjectOption(\'\')">';
@@ -9435,7 +9435,7 @@ function closeProjectModal() {
   document.getElementById('project-modal').style.display = 'none';
 }
 
-var PROJECT_LIST_LIMIT = 5;
+var PROJECT_LIST_LIMIT = 500;   // Fixé arbitrairement à 500 pour ne pas limiter l'affichage dans la pratique (valeur initiale de 5)
 function renderProjectList() {
   var searchEl = document.getElementById('project-search');
   var q = (searchEl && searchEl.value ? searchEl.value : '').trim().toLowerCase();
