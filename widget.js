@@ -6789,8 +6789,9 @@ function openNewTaskModal(defaultStatus) {
     html += '<div class="assignee-add-row">';
     html += '<select id="assignee-select">';
     html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-    for (var i = 0; i < users.length; i++) {
-      html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+    var sortedUsers = users.slice().sort(function(a, b) { return (a.Name || a.Email).localeCompare(b.Name || b.Email); });
+    for (var i = 0; i < sortedUsers.length; i++) {
+      html += '<option value="' + sanitize(sortedUsers[i].Email || sortedUsers[i].Name) + '">' + sanitize(sortedUsers[i].Name || sortedUsers[i].Email) + '</option>';
     }
     html += '</select>';
     html += '<button class="assignee-add-btn" onclick="addRaciChip(\'editAssignees\',\'assignee\')">' + t('addAssignee') + '</button>';
@@ -6846,9 +6847,10 @@ function openNewTaskModal(defaultStatus) {
 
   // Project
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
-  for (var pi = 0; pi < projects.length; pi++) {
-    var projSelected = currentProjectId === projects[pi].id ? ' selected' : '';
-    projectOptions += '<option value="' + projects[pi].id + '"' + projSelected + '>' + sanitize(projects[pi].Name) + '</option>';
+  var sortedProjects = projects.slice().sort(function(a, b) { return a.Name.localeCompare(b.Name); });
+  for (var pi = 0; pi < sortedProjects.length; pi++) {
+    var projSelected = currentProjectId === sortedProjects[pi].id ? ' selected' : '';
+    projectOptions += '<option value="' + sortedProjects[pi].id + '"' + projSelected + '>' + sanitize(sortedProjects[pi].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
@@ -7000,8 +7002,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '<div class="assignee-add-row">';
     html += '<select id="assignee-select">';
     html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-    for (var i = 0; i < users.length; i++) {
-      html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+    var sortedUsers = users.slice().sort(function(a, b) { return (a.Name || a.Email).localeCompare(b.Name || b.Email); });
+    for (var i = 0; i < sortedUsers.length; i++) {
+      html += '<option value="' + sanitize(sortedUsers[i].Email || sortedUsers[i].Name) + '">' + sanitize(sortedUsers[i].Name || sortedUsers[i].Email) + '</option>';
     }
     html += '</select>';
     html += '<button class="assignee-add-btn" onclick="addRaciChip(\'editAssignees\',\'assignee\')">' + t('addAssignee') + '</button>';
@@ -7054,9 +7057,10 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   // Project
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
-  for (var pi = 0; pi < projects.length; pi++) {
-    var projSel = projects[pi].id === task.Project_Id ? ' selected' : '';
-    projectOptions += '<option value="' + projects[pi].id + '"' + projSel + '>' + sanitize(projects[pi].Name) + '</option>';
+  var sortedProjects = projects.slice().sort(function(a, b) { return a.Name.localeCompare(b.Name); });
+  for (var pi = 0; pi < sortedProjects.length; pi++) {
+    var projSel = sortedProjects[pi].id === task.Project_Id ? ' selected' : '';
+    projectOptions += '<option value="' + sortedProjects[pi].id + '"' + projSel + '>' + sanitize(sortedProjects[pi].Name) + '</option>';
   }
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📂</span>';
@@ -7149,11 +7153,12 @@ function openEditTaskModal(taskId, preserveAssignees) {
       // Assignés multiples : liste de cases à cocher (comme les tâches, séparés par virgule)
       var stAssignees = (st.Assignee || '').split(',').map(function(a) { return a.trim(); }).filter(Boolean);
       var assigneeListHtml = '<div class="st-assignee-list" id="st-assignee-' + st.id + '" style="display:flex;flex-wrap:wrap;gap:4px 10px;max-height:84px;overflow-y:auto;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;">';
-      if (users.length === 0) {
+      var sortedUsers = users.slice().sort(function(a, b) { return (a.Name || a.Email).localeCompare(b.Name || b.Email); });
+      if (sortedUsers.length === 0) {
         assigneeListHtml += '<span style="font-size:11px;color:#94a3b8;">' + (currentLang === 'fr' ? 'Aucun membre' : 'No members') + '</span>';
       }
-      for (var ui = 0; ui < users.length; ui++) {
-        var uName = users[ui].Name;
+      for (var ui = 0; ui < sortedUsers.length; ui++) {
+        var uName = sortedUsers[ui].Name;
         var uChk = stAssignees.indexOf(uName) !== -1 ? ' checked' : '';
         assigneeListHtml += '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" value="' + sanitize(uName) + '"' + uChk + '> ' + sanitize(uName) + '</label>';
       }
@@ -7573,8 +7578,9 @@ function renderRaciField(letter, label, selectSuffix, varName) {
   html += '<div class="assignee-add-row">';
   html += '<select id="' + selectSuffix + '-select">';
   html += '<option value="">-- ' + t('searchAssignee') + ' --</option>';
-  for (var i = 0; i < users.length; i++) {
-    html += '<option value="' + sanitize(users[i].Email || users[i].Name) + '">' + sanitize(users[i].Name || users[i].Email) + '</option>';
+  var sortedUsers = users.slice().sort(function(a, b) { return (a.Name || a.Email).localeCompare(b.Name || b.Email); });
+  for (var i = 0; i < sortedUsers.length; i++) {
+    html += '<option value="' + sanitize(sortedUsers[i].Email || sortedUsers[i].Name) + '">' + sanitize(sortedUsers[i].Name || sortedUsers[i].Email) + '</option>';
   }
   html += '</select>';
   html += '<button class="assignee-add-btn" onclick="addRaciChip(\'' + varName + '\',\'' + selectSuffix + '\')">' + t('addAssignee') + '</button>';
