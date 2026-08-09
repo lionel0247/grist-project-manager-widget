@@ -762,8 +762,8 @@ var kanbanGroupBy = 'status'; // 'status' | 'priority' | 'project'
 var kanbanSort = 'manual'; // 'manual' | 'alpha' | 'alpha-desc' | 'due'
 var expandedKanbanCards = {}; // taskId -> true quand la tuile est dépliée (A2)
 var collapsedKanbanCols = {}; // col.key -> true when collapsed
-var expandedProjectListProjects = {}; // projectId -> true quand déplié (par défaut true pour tous)
-var allProjectListTasksExpanded = true; // état global pour tout déplier/replier
+var expandedProjectListProjects = {}; // projectId -> true quand déplié
+var allProjectListTasksExpanded = false; // état global pour tout déplier/replier (replié par défaut)
 
 var defaultKanbanStatuses = [
   { key: 'todo',     label_fr: 'À faire',   label_en: 'To do',        color: '#f59e0b', cssClass: 'col-todo' },
@@ -4498,22 +4498,18 @@ function renderProjectListView() {
     var myIds = myProjectIdSet();
     projectsToShow = projects.filter(function(p) { return myIds[p.id]; });
   } else {
-    // Afficher les projets qui ont des tâches correspondant aux filtres
-    // ou tous les projets s'il n'y a pas de tâches du tout
-    if (Object.keys(projectIdsWithTasks).length > 0) {
-      projectsToShow = projects.filter(function(p) { return projectIdsWithTasks[p.id]; });
+    // Afficher tous les projets sauf ceux archivés
+    projectsToShow = projects.filter(function(p) { return p.Status !== 'archived'; });
+  }
+  
+  // Initialiser tous les projets comme repliés par défaut (sauf si déjà définis manuellement)
+  // Note: On initialise expandedProjectListProjects mais on conserve allProjectListTasksExpanded
+  if (Object.keys(expandedProjectListProjects).length === 0) {
+    // Si l'état global indique "tout déplié", on déplie tout, sinon on replie tout
+    if (allProjectListTasksExpanded) {
+      expandedProjectListProjects = {}; // vide = tout déplié
     } else {
-      // Si aucune tâche ne correspond aux filtres, afficher tous les projets
-      // mais seulement ceux qui ont des tâches (ou tous s'il n'y a pas de tâches du tout)
-      var allProjectIdsWithTasks = {};
-      tasks.forEach(function(task) {
-        if (task.Project_Id && task.Status !== 'archived') {
-          allProjectIdsWithTasks[task.Project_Id] = true;
-        }
-      });
-      projectsToShow = projects.filter(function(p) { 
-        return allProjectIdsWithTasks[p.id] || Object.keys(allProjectIdsWithTasks).length === 0; 
-      });
+      projects.forEach(function(p) { expandedProjectListProjects[p.id] = false; });
     }
   }
   
