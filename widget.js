@@ -2824,16 +2824,27 @@ function buildFilterCombo(id, placeholder, options, selectedValue, onSelect) {
 var tableFilterStatuses = [];
 var tableFilterPriorities = [];
 
+// B2 : multi-filtres responsable/statut pour la vue Projets (tableau vide = tous)
+var projectListFilterLeads = [];
+var projectListFilterStatuses = [];
+
 function renderMultiFilter(kind) {
-  var containerId = kind === 'status' ? 'ms-status' : 'ms-priority';
+  var containerId;
+  if (kind === 'status') containerId = 'ms-status';
+  else if (kind === 'priority') containerId = 'ms-priority';
+  else if (kind === 'lead') containerId = 'ms-lead';
+  else if (kind === 'projectStatus') containerId = 'ms-project-status';
+  else return;
+  
   var c = document.getElementById(containerId);
   if (!c) return;
   var opts, selected, placeholder;
+  
   if (kind === 'status') {
     opts = getKanbanStatuses().map(function(s) { return { value: s.key, label: currentLang === 'fr' ? s.label_fr : s.label_en }; });
     selected = tableFilterStatuses;
     placeholder = currentLang === 'fr' ? 'Tous les statuts' : 'All statuses';
-  } else {
+  } else if (kind === 'priority') {
     opts = [
       { value: 'high', label: t('priorityHigh') },
       { value: 'medium', label: t('priorityMedium') },
@@ -2841,6 +2852,27 @@ function renderMultiFilter(kind) {
     ];
     selected = tableFilterPriorities;
     placeholder = currentLang === 'fr' ? 'Toutes priorités' : 'All priorities';
+  } else if (kind === 'lead') {
+    // Filtre sur les responsables de projet (Lead)
+    var uniqueLeads = [];
+    projects.forEach(function(proj) {
+      var lead = proj.Lead || '';
+      if (lead && uniqueLeads.indexOf(lead) === -1) uniqueLeads.push(lead);
+    });
+    uniqueLeads.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    opts = uniqueLeads.map(function(lead) { return { value: lead, label: getUserDisplayName(lead) || lead }; });
+    selected = projectListFilterLeads;
+    placeholder = currentLang === 'fr' ? 'Tous les responsables' : 'All leads';
+  } else if (kind === 'projectStatus') {
+    // Filtre sur les statuts de projet
+    var statusOpts = [
+      { value: 'active', label: currentLang === 'fr' ? 'Actif' : 'Active' },
+      { value: 'completed', label: currentLang === 'fr' ? 'Terminé' : 'Completed' },
+      { value: 'archived', label: currentLang === 'fr' ? 'Archivé' : 'Archived' }
+    ];
+    opts = statusOpts;
+    selected = projectListFilterStatuses;
+    placeholder = currentLang === 'fr' ? 'Tous les statuts' : 'All statuses';
   }
   var labelText = selected.length === 0 ? placeholder
     : opts.filter(function(o) { return selected.indexOf(o.value) !== -1; }).map(function(o) { return o.label; }).join(', ');
@@ -2895,16 +2927,28 @@ function toggleMsFilter(containerId) {
 }
 
 function toggleMsOption(kind, value) {
-  var arr = kind === 'status' ? tableFilterStatuses : tableFilterPriorities;
+  var arr, renderFn;
+  if (kind === 'status') { arr = tableFilterStatuses; renderFn = renderTableView; }
+  else if (kind === 'priority') { arr = tableFilterPriorities; renderFn = renderTableView; }
+  else if (kind === 'lead') { arr = projectListFilterLeads; renderFn = renderProjectListView; }
+  else if (kind === 'projectStatus') { arr = projectListFilterStatuses; renderFn = renderProjectListView; }
+  else return;
+  
   var i = arr.indexOf(value);
   if (i === -1) arr.push(value); else arr.splice(i, 1);
-  renderTableView(); // reconstruit le filtre (état ouvert préservé) + le tableau
+  renderFn(); // reconstruit le filtre (état ouvert préservé) + la vue
 }
 
 function clearMsFilter(kind) {
-  if (kind === 'status') tableFilterStatuses = []; else tableFilterPriorities = [];
+  if (kind === 'status') tableFilterStatuses = [];
+  else if (kind === 'priority') tableFilterPriorities = [];
+  else if (kind === 'lead') projectListFilterLeads = [];
+  else if (kind === 'projectStatus') projectListFilterStatuses = [];
+  else return;
+  
   renderMultiFilter(kind);
-  renderTableView();
+  if (kind === 'status' || kind === 'priority') renderTableView();
+  else renderProjectListView();
 }
 
 function toggleFilterCombo(id) {
@@ -3830,6 +3874,23 @@ function toggleProjectListProject(projectId, ev) {
   renderProjectListView();
 }
 
+// Déplier toutes les tâches dans la vue Liste Projets
+function expandAllProjectTasks() {
+  expandedProjectListProjects = {}; // Tout déplié par défaut
+  allProjectListTasksExpanded = true;
+  renderProjectListView();
+}
+
+// Replier toutes les tâches dans la vue Liste Projets
+function collapseAllProjectTasks() {
+  // Tout replier
+  for (var i = 0; i < projects.length; i++) {
+    expandedProjectListProjects[projects[i].id] = false;
+  }
+  allProjectListTasksExpanded = false;
+  renderProjectListView();
+}
+
 // Déplier/Replier TOUTES les tâches dans la vue Liste Projets
 function toggleAllProjectListTasks() {
   allProjectListTasksExpanded = !allProjectListTasksExpanded;
@@ -4409,7 +4470,11 @@ function renderTableView() {
   if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
 }
 
-function renderProjectListView() {
+function renderProjectListView() { 
+  // B2 : (re)construire les multi-filtres responsable/statut
+  renderMultiFilter('lead');
+  renderMultiFilter('projectStatus');
+
   var search = (document.getElementById('project-list-search').value || '').toLowerCase();
   
   // Récupérer les tâches déjà filtrées selon les critères globaux
@@ -4452,8 +4517,13 @@ function renderProjectListView() {
     }
   }
   
-  // Appliquer la recherche locale sur les projets sélectionnés
+  // Appliquer les filtres multi-choix (responsable et statut) + la recherche locale sur les projets sélectionnés
   var filteredProjects = projectsToShow.filter(function(project) {
+    // Filtre sur le responsable (Lead)
+    if (projectListFilterLeads.length && projectListFilterLeads.indexOf(project.Lead || '') === -1) return false;
+    // Filtre sur le statut du projet
+    if (projectListFilterStatuses.length && projectListFilterStatuses.indexOf(project.Status || '') === -1) return false;
+    // Recherche texte
     if (search) {
       var projectText = (project.Name || '') + ' ' + (project.Description || '') + ' ' + (project.Lead || '');
       if (projectText.toLowerCase().indexOf(search) === -1) return false;

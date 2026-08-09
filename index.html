@@ -1176,6 +1176,16 @@
       background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 12px center;
     }
     .table-filters input[type="text"]:focus { outline: none; border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+    .project-list-filters input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 8px 14px 8px 36px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 12px center;
+    }
+    .project-list-filters input[type="text"]:focus { outline: none; border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
     .table-filters select {
       padding: 8px 12px;
       border: 1px solid #e2e8f0;
@@ -4243,7 +4253,7 @@
     <div class="tab-content" id="tab-table">
       <div class="section-title">
         <h2 data-i18n="tableTitle">Tableau de Gestion</h2>
-        <p data-i18n="tableSubtitle">Gérez vos tâches avec édition inline avancée</p>
+        <p data-i18n="tableSubtitle">Gérez vos tâches avec édition inline</p>
       </div>
       <div class="table-filters">
         <button class="btn-secondary btn-sm" onclick="expandAllSubtasks()" title="Tout déplier">⊞</button>
@@ -4259,10 +4269,14 @@
     <div class="tab-content" id="tab-projectList">
       <div class="section-title">
         <h2 data-i18n="projectListTitle">Liste des Projets</h2>
-        <p data-i18n="projectListSubtitle">Voir les projets et leurs tâches associées</p>
+        <p data-i18n="projectListSubtitle">Voir les projets et les tâches associées</p>
       </div>
       <div class="project-list-filters">
+        <button class="btn-secondary btn-sm" onclick="expandAllProjectTasks()" title="Tout déplier">⊞</button>
+        <button class="btn-secondary btn-sm" onclick="collapseAllProjectTasks()" title="Tout replier">⊟</button>
         <input type="text" id="project-list-search" placeholder="Rechercher un projet..." data-i18n-placeholder="projectSearchPlaceholder" oninput="renderProjectListView()" />
+        <div id="ms-lead" class="filter-combo"></div>
+        <div id="ms-project-status" class="filter-combo"></div>
       </div>
       <div id="project-list-view"></div>
     </div>
