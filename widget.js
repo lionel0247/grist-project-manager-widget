@@ -2765,7 +2765,10 @@ function renderProjectSelector() {
     html += '<button class="btn-icon" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
   }
 
-  html += '<button class="btn-icon" onclick="openProjectModal()" title="' + t('manageProjects') + '">⚙️</button>';
+  if (isOwner) {
+    html += '<button class="btn-icon" onclick="openProjectModal()" title="' + t('manageProjects') + '">⚙️</button>';
+    html += '<button class="btn-new-project" onclick="openProjectModal()">+ <span data-i18n="newProject">Nouveau projet</span></button>';
+  }
   container.innerHTML = html;
 
   // Bandeau de filtre actif en haut de page (affiche tous les filtres en cascade)
