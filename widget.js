@@ -11,7 +11,7 @@ var i18n = {
     notInGrist: 'Ce widget doit être utilisé dans Grist.',
     tabCalendar: 'Calendrier',
     tabKanban: 'Kanban',
-    tabTable: 'Tableau',
+    tabTable: 'Tâches',
     tabGantt: 'Gantt',
     tabPlanning: 'Planning',
     tabProjectList: 'Projets',
@@ -5859,7 +5859,7 @@ function renderPlanningView() {
           var tooltip = sanitize(task.Title || '') + '\n' + 
                         (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(task.Status || '') + '\n' +
                         (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(task.Priority || '');
-          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '\\n') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
+          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
           if (widthPercent > 30) {
             html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
           }
