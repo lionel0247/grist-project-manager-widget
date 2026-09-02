@@ -5702,8 +5702,10 @@ function renderPlanningView() {
     headers = generatePlanningHeadersCustom(startDate, endDate, currentLang);
   } else if (planningMode === 'days') {
     // 3 months view
-    startDate = new Date(planningYear, planningMonth - 1, 1);
-    endDate = new Date(planningYear, planningMonth + 2, 0, 23, 59, 59);
+    startDate = new Date(planningYear, planningMonth, 1);  // Affichage à partir 1er du mois sélectionné
+    //startDate = new Date(planningYear, planningMonth - 1, 1);
+    endDate = new Date(planningYear, planningMonth + 6, 0, 23, 59, 59); // Affichage jusqu'à la fin du 6ème mois après le mois sélectionné
+    //endDate = new Date(planningYear, planningMonth + 2, 0, 23, 59, 59);
     headers = generatePlanningHeadersDays(startDate, endDate, dayNames, monthNamesShort, currentLang);
   } else if (planningMode === 'weeks') {
     // 8 weeks view
