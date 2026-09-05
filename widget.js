@@ -993,7 +993,8 @@ var columnMapping = {
     description: 'Description',
     color: 'Color',
     status: 'Status',
-    lead: 'Lead'
+    lead: 'Lead',
+    projectManager: 'CdpBep'
   },
   categories: {
     name: 'Name',
@@ -2758,15 +2759,17 @@ function renderProjectSelector() {
 
   // Bouton "Mes projets" (créés par moi OU assigné à moi)
   if (currentUserEmail) {
-    html += '<button class="btn-icon" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
+    //html += '<button class="btn-icon" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
+    html += '<button class="btn-new-project" onclick="toggleMyProjects()" title="' + (currentLang === 'fr' ? 'Mes projets : créés par moi ou qui me sont assignés' : 'My projects: created by or assigned to me') + '" style="width:auto;padding:0 12px;font-size:12px;font-weight:600;' + (mineOnly ? 'background:#6366f1;color:#fff;border-color:#6366f1;' : '') + '">👤 ' + (currentLang === 'fr' ? 'Mes projets' : 'My projects') + '</button>';
   }
 
   if (currentFilterRole || currentFilterAssignee || currentFilterCategory || currentFilterTag || currentFilterGroup || currentProjectId || mineOnly) {
-    html += '<button class="btn-icon" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
+    //html += '<button class="btn-icon" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
+    html += '<button class="btn-new-project" onclick="resetFilters()" title="' + (currentLang === 'fr' ? 'Réinitialiser les filtres' : 'Reset filters') + '" style="color:#ef4444;">✕</button>';
   }
 
   if (isOwner) {
-    html += '<button class="btn-icon" onclick="openProjectModal()" title="' + t('manageProjects') + '">⚙️</button>';
+    //html += '<button class="btn-icon" onclick="openProjectModal()" title="' + t('manageProjects') + '">⚙️</button>';
     html += '<button class="btn-new-project" onclick="openProjectModal()">+ <span data-i18n="newProject">Nouveau projet</span></button>';
   }
   container.innerHTML = html;
@@ -9505,7 +9508,7 @@ function openProjectModal() {
   document.getElementById('project-form-title').textContent = t('addProject');
   var psearch = document.getElementById('project-search');
   if (psearch) psearch.value = '';
-  renderProjectList();
+  //renderProjectList();     // A décommenter pour afficher et filtrer la liste des projets dans le modal.
 }
 
 function closeProjectModal() {
@@ -10465,7 +10468,22 @@ function openProjectModalForEdit(projectId) {
   statusOptions.forEach(function(s) {
     html += '<option value="' + s + '"' + (proj.Status === s ? ' selected' : '') + '>' + (statusLabels[s] || s) + '</option>';
   });
+  //html += '</select></div></div>';
   html += '</select></div></div>';
+   html += '<div style="display:flex;gap:12px;">';
+  html += '<div class="form-group" style="flex:2"><label>' + (currentLang === 'fr' ? 'Responsable' : 'Assignee') + '</label>';
+  html += '<select id="inline-proj-assignee" class="form-input">';
+  /*assigneeOptions.forEach(function(a) {
+    html += '<option value="' + a + '"' + (proj.Lead === a ? ' selected' : '') + '>' + (assigneeLabels[a] || a) + '</option>';
+  });*/ 
+  html += '</select></div>'; 
+   html += '<div class="form-group" style="flex:2"><label>' + (currentLang === 'fr' ? 'Chef de projet' : 'Project Manager') + '</label>';
+  html += '<select id="inline-proj-manager" class="form-input">';
+  /*assigneeOptions.forEach(function(p) {
+    html += '<option value="' + p + '"' + (proj.CdpBep === p ? ' selected' : '') + '>' + (assigneeLabels[p] || p) + '</option>';
+  });*/ 
+  html += '</select></div></div>'; 
+
   html += '</div>';
   html += '<div class="modal-footer">';
   html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + (currentLang === 'fr' ? 'Annuler' : 'Cancel') + '</button>';
@@ -10483,6 +10501,7 @@ async function saveInlineProjectEdit(projectId) {
   setField(record, 'projects', 'description', document.getElementById('inline-proj-desc').value || '');
   setField(record, 'projects', 'color', document.getElementById('inline-proj-color').value || '#6366f1');
   setField(record, 'projects', 'status', document.getElementById('inline-proj-status').value || 'active');
+  //setField(record, 'projects', 'assignee', document.getElementById('inline-proj-assignee').value || '');
   try {
     await grist.docApi.applyUserActions([['UpdateRecord', PROJECTS_TABLE, projectId, record]]);
     showToast((currentLang === 'fr' ? 'Projet modifié' : 'Project updated') + ' ✓', 'success');
