@@ -750,6 +750,7 @@ var customFieldValues = [];
 var categories = [];
 var tags = [];
 var projects = [];
+var projectManagers = [];
 var currentProjectId = null; // null = all projects
 var currentFilterRole = null;
 var currentFilterAssignee = null; // user Name
@@ -947,6 +948,7 @@ var CUSTOM_FIELD_VALUES_TABLE = 'PM_CustomFieldValues';
 var CATEGORIES_TABLE = 'PM_Categories';
 var TAGS_TABLE = 'PM_Tags';
 var PROJECTS_TABLE = 'PM_Projects';
+var PROJECT_MANAGERS_TABLE = 'PM_CDP_BEP';
 var CONFIG_TABLE = 'PM_Config';
 var SETTINGS_TABLE = 'PM_Settings';
 var NOTIFICATIONS_TABLE = 'PM_Notifications';
@@ -2014,8 +2016,18 @@ async function ensureTables() {
           { id: 'Start_Date', type: 'Date' },
           { id: 'End_Date', type: 'Date' },
           { id: 'Lead', type: 'Text' },
+          { id: 'CdpBep', type: 'Text' },
           { id: 'CreatedBy', type: 'Text' },
           { id: 'CreatedAt', type: 'Text' }
+        ]]
+      ]);
+    }
+
+    // Create PM_CDP_BEP table if it doesn't exist (for project managers)
+    if (existingTables.indexOf(PROJECT_MANAGERS_TABLE) === -1) {
+      await grist.docApi.applyUserActions([
+        ['AddTable', PROJECT_MANAGERS_TABLE, [
+          { id: 'Name', type: 'Text' }
         ]]
       ]);
     }
@@ -2046,14 +2058,15 @@ async function ensureTables() {
       console.log('[GristPM] Migration templates ignorée :', e.message);
     }
 
-    // Migration CreatedBy / CreatedAt sur PM_Projects (créateur du projet)
+    // Migration CreatedBy / CreatedAt / Lead / CdpBep sur PM_Projects (créateur du projet)
     try {
       var projCols = Object.keys(await grist.docApi.fetchTable(PROJECTS_TABLE));
       var projMig = [];
       if (projCols.indexOf('CreatedBy') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'CreatedBy', { type: 'Text' }]);
       if (projCols.indexOf('CreatedAt') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'CreatedAt', { type: 'Text' }]);
       if (projCols.indexOf('Lead') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'Lead', { type: 'Text' }]);
-      if (projMig.length) { await grist.docApi.applyUserActions(projMig); console.log('[GristPM] CreatedBy/CreatedAt ajoutés à PM_Projects'); }
+      if (projCols.indexOf('CdpBep') === -1) projMig.push(['AddColumn', PROJECTS_TABLE, 'CdpBep', { type: 'Text' }]);
+      if (projMig.length) { await grist.docApi.applyUserActions(projMig); console.log('[GristPM] CreatedBy/CreatedAt/Lead/CdpBep ajoutés à PM_Projects'); }
     } catch (e) {
       console.log('[GristPM] Migration CreatedBy ignorée :', e.message);
     }
@@ -2569,6 +2582,8 @@ async function loadAllData() {
       var descCol = getColumnName('projects', 'description');
       var colorCol = getColumnName('projects', 'color');
       var statusCol = getColumnName('projects', 'status');
+      var leadCol = getColumnName('projects', 'lead');
+      var managerCol = getColumnName('projects', 'projectManager');
       
       for (var i = 0; i < projData.id.length; i++) {
         projects.push({
@@ -2579,7 +2594,8 @@ async function loadAllData() {
           Status: projData[statusCol] ? projData[statusCol][i] : 'active',
           Start_Date: projData.Start_Date ? projData.Start_Date[i] : null,
           End_Date: projData.End_Date ? projData.End_Date[i] : null,
-          Lead: projData.Lead ? projData.Lead[i] : '',
+          Lead: projData[leadCol] ? projData[leadCol][i] : (projData.Lead ? projData.Lead[i] : ''),
+          CdpBep: projData[managerCol] ? projData[managerCol][i] : (projData.CdpBep ? projData.CdpBep[i] : ''),
           CreatedBy: projData.CreatedBy ? projData.CreatedBy[i] : '',
           CreatedAt: projData.CreatedAt ? projData.CreatedAt[i] : ''
         });
@@ -2587,6 +2603,24 @@ async function loadAllData() {
     }
   } catch (e) {
     projects = [];
+  }
+
+  // Chargement des chefs de projet depuis PM_CDP_BEP
+  try {
+    var pmData = await grist.docApi.fetchTable(PROJECT_MANAGERS_TABLE);
+    projectManagers = [];
+    if (pmData && pmData.id) {
+      for (var i = 0; i < pmData.id.length; i++) {
+        projectManagers.push({
+          id: pmData.id[i],
+          Name: pmData.Name ? pmData.Name[i] : ''
+        });
+      }
+    }
+    // Trier par nom alphabétiquement
+    projectManagers.sort(function(a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+  } catch (e) {
+    projectManagers = [];
   }
 
   try {
@@ -4549,6 +4583,7 @@ function renderProjectListView() {
   html += '<th style="text-align:left;">' + (currentLang === 'fr' ? 'Projet' : 'Project') + '</th>';
   html += '<th>' + (currentLang === 'fr' ? 'Statut' : 'Status') + '</th>';
   html += '<th>' + (currentLang === 'fr' ? 'Responsable' : 'Lead') + '</th>';
+  html += '<th>' + (currentLang === 'fr' ? 'Chef de projet' : 'Project Manager') + '</th>';
   html += '<th>' + t('colAssignee') + '</th>';
   html += '<th>' + t('colStartDate') + '</th>';
   html += '<th>' + t('colDueDate') + '</th>';
@@ -4583,7 +4618,9 @@ function renderProjectListView() {
     html += '<td style="text-align:center;"><button class="toggle-btn" onclick="toggleProjectListProject(' + project.id + ', event)" title="' + (currentLang === 'fr' ? 'Déplier/Replier les tâches' : 'Expand/Collapse tasks') + '">' + (isProjectExpanded ? '-' : '+') + '</button></td>';
     html += '<td style="font-weight:700;padding-left:12px;">' + sanitize(project.Name) + (project.Description ? '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(project.Description) + '</div>' : '') + '</td>';
     html += '<td><span class="status-badge">● ' + (currentLang === 'fr' ? (project.Status === 'active' ? 'Actif' : project.Status === 'completed' ? 'Terminé' : project.Status === 'archived' ? 'Archivé' : project.Status) : (project.Status === 'active' ? 'Active' : project.Status === 'completed' ? 'Completed' : project.Status === 'archived' ? 'Archived' : project.Status)) + '</span></td>';
+    var projectManager = getUserDisplayName(project.CdpBep || '');
     html += '<td>' + (projectLead ? '<span class="assignee-chip">👤 ' + sanitize(projectLead) + '</span>' : '') + '</td>';
+    html += '<td>' + (projectManager ? '<span class="assignee-chip">👔 ' + sanitize(projectManager) + '</span>' : '') + '</td>';
     html += '<td colspan="4"></td>';
     html += '<td>' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</td>';
     html += '</tr>';
@@ -4602,7 +4639,8 @@ function renderProjectListView() {
         html += '<td></td>'; // Cellule vide pour la colonne du bouton
         html += '<td><div style="display:flex;align-items:center;gap:8px;"><span style="width:16px;flex-shrink:0;">└</span><div style="font-weight:600;">' + sanitize(task.Title) + '</div></div></td>';
         html += '<td><span class="status-badge ' + statusClass + '">● ' + statusLabel(task.Status) + '</span></td>';
-        html += '<td></td>';
+        html += '<td></td>'; // Responsable (vide pour les tâches)
+        html += '<td></td>'; // Chef de projet (vide pour les tâches)
         html += '<td>' + (assigneeDisplay ? '<span class="assignee-chip">👤 ' + sanitize(assigneeDisplay) + '</span>' : '') + '</td>';
         html += '<td>' + (task.Start_Date ? formatDate(task.Start_Date) : t('notDefined')) + '</td>';
         html += '<td style="' + (isOverdue(task) ? 'color:#dc2626;font-weight:700;' : '') + '">' + (task.Due_Date ? formatDate(task.Due_Date) + overdueHtml : t('noDate')) + '</td>';
@@ -9487,10 +9525,27 @@ function populateProjectLead(selectedValue) {
   var sel = document.getElementById('project-lead');
   if (!sel) return;
   var html = '<option value="">--</option>';
-  users.forEach(function (u) {
+  // Trier les utilisateurs par ordre alphabétique
+  var sortedUsers = users.slice().sort(function(a, b) {
+    return (a.Name || a.Email || '').localeCompare(b.Name || b.Email || '');
+  });
+  sortedUsers.forEach(function (u) {
     var val = u.Email || u.Name;
     if (!val) return;
     html += '<option value="' + sanitize(val) + '"' + (val === selectedValue ? ' selected' : '') + '>' + sanitize(u.Name || u.Email) + '</option>';
+  });
+  sel.innerHTML = html;
+}
+
+// Remplit le sélecteur "Chef de projet" avec les chefs de projet (et présélectionne)
+function populateProjectManager(selectedValue) {
+  var sel = document.getElementById('project-manager');
+  if (!sel) return;
+  var html = '<option value="">--</option>';
+  projectManagers.forEach(function (pm) {
+    var val = pm.Name;
+    if (!val) return;
+    html += '<option value="' + sanitize(val) + '"' + (val === selectedValue ? ' selected' : '') + '>' + sanitize(val) + '</option>';
   });
   sel.innerHTML = html;
 }
@@ -9503,6 +9558,7 @@ function openProjectModal() {
   document.getElementById('project-color').value = '#6366f1';
   document.getElementById('project-status').value = 'active';
   populateProjectLead('');
+  populateProjectManager('');
   document.getElementById('project-form-title').textContent = t('addProject');
   var psearch = document.getElementById('project-search');
   if (psearch) psearch.value = '';
@@ -9550,6 +9606,7 @@ function renderProjectList() {
     html += '<strong>' + sanitize(proj.Name) + '</strong>';
     var metaTxt = taskCount + ' ' + (currentLang === 'fr' ? 'tâches' : 'tasks');
     if (proj.Lead) metaTxt += ' · 👤 ' + (currentLang === 'fr' ? 'resp. ' : 'lead ') + sanitize(getUserDisplayName(proj.Lead));
+    if (proj.CdpBep) metaTxt += ' · 👔 ' + (currentLang === 'fr' ? 'chef de projet: ' : 'project manager: ') + sanitize(proj.CdpBep);
     if (proj.CreatedBy) metaTxt += ' · ' + (currentLang === 'fr' ? 'créé par ' : 'created by ') + sanitize(getUserDisplayName(proj.CreatedBy));
     html += '<span class="project-item-meta">' + metaTxt + '</span>';
     html += '</div>';
@@ -9583,6 +9640,7 @@ function editProject(projectId) {
   document.getElementById('project-color').value = proj.Color || '#6366f1';
   document.getElementById('project-status').value = proj.Status || 'active';
   populateProjectLead(proj.Lead || '');
+  populateProjectManager(proj.CdpBep || '');
   document.getElementById('project-form-title').textContent = t('editProject');
 }
 
@@ -9594,6 +9652,8 @@ async function saveProject() {
   var status = document.getElementById('project-status').value;
   var leadEl = document.getElementById('project-lead');
   var lead = leadEl ? leadEl.value : '';
+  var managerEl = document.getElementById('project-manager');
+  var manager = managerEl ? managerEl.value : '';
 
   if (!name) {
     showToast(t('projectName') + ' ' + t('required'), 'error');
@@ -9607,6 +9667,7 @@ async function saveProject() {
     setField(record, 'projects', 'color', color);
     setField(record, 'projects', 'status', status);
     setField(record, 'projects', 'lead', lead);
+    setField(record, 'projects', 'projectManager', manager);
     
     if (projectId) {
       await grist.docApi.applyUserActions([
@@ -9634,6 +9695,7 @@ async function saveProject() {
     document.getElementById('project-color').value = '#6366f1';
     document.getElementById('project-status').value = 'active';
     populateProjectLead('');
+    populateProjectManager('');
     document.getElementById('project-form-title').textContent = t('addProject');
   } catch (e) {
     console.error('Error saving project:', e);
@@ -10449,6 +10511,27 @@ function openProjectModalForEdit(projectId) {
   var statusOptions = ['active', 'archived', 'completed'];
   var statusLabels = { active: currentLang === 'fr' ? 'Actif' : 'Active', archived: currentLang === 'fr' ? 'Archivé' : 'Archived', completed: currentLang === 'fr' ? 'Terminé' : 'Completed' };
 
+  // Générer les options pour Lead (tous les utilisateurs, triés par ordre alphabétique)
+  var leadOptions = '';
+  var sortedUsers = users.slice().sort(function(a, b) {
+    return (a.Name || a.Email || '').localeCompare(b.Name || b.Email || '');
+  });
+  sortedUsers.forEach(function(u) {
+    var val = u.Email || u.Name;
+    if (!val) return;
+    var selected = proj.Lead === val ? ' selected' : '';
+    leadOptions += '<option value="' + sanitize(val) + '"' + selected + '>' + sanitize(u.Name || u.Email) + '</option>';
+  });
+
+  // Générer les options pour CdpBep (tous les chefs de projet, triés par ordre alphabétique)
+  var managerOptions = '';
+  projectManagers.forEach(function(pm) {
+    var val = pm.Name;
+    if (!val) return;
+    var selected = proj.CdpBep === val ? ' selected' : '';
+    managerOptions += '<option value="' + sanitize(val) + '"' + selected + '>' + sanitize(val) + '</option>';
+  });
+
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal" style="max-width:420px;" onclick="event.stopPropagation()">';
   html += '<div class="modal-header"><h3>✏️ ' + (currentLang === 'fr' ? 'Modifier le projet' : 'Edit project') + '</h3>';
@@ -10466,20 +10549,15 @@ function openProjectModalForEdit(projectId) {
   statusOptions.forEach(function(s) {
     html += '<option value="' + s + '"' + (proj.Status === s ? ' selected' : '') + '>' + (statusLabels[s] || s) + '</option>';
   });
-  //html += '</select></div></div>';
   html += '</select></div></div>';
    html += '<div style="display:flex;gap:12px;">';
-  html += '<div class="form-group" style="flex:2"><label>' + (currentLang === 'fr' ? 'Responsable' : 'Assignee') + '</label>';
+  html += '<div class="form-group" style="flex:2"><label>' + (currentLang === 'fr' ? 'Responsable' : 'Lead') + '</label>';
   html += '<select id="inline-proj-assignee" class="form-input">';
-  /*assigneeOptions.forEach(function(a) {
-    html += '<option value="' + a + '"' + (proj.Lead === a ? ' selected' : '') + '>' + (assigneeLabels[a] || a) + '</option>';
-  });*/ 
+  html += '<option value="">--</option>' + leadOptions;
   html += '</select></div>'; 
    html += '<div class="form-group" style="flex:2"><label>' + (currentLang === 'fr' ? 'Chef de projet' : 'Project Manager') + '</label>';
   html += '<select id="inline-proj-manager" class="form-input">';
-  /*assigneeOptions.forEach(function(p) {
-    html += '<option value="' + p + '"' + (proj.CdpBep === p ? ' selected' : '') + '>' + (assigneeLabels[p] || p) + '</option>';
-  });*/ 
+  html += '<option value="">--</option>' + managerOptions;
   html += '</select></div></div>'; 
 
   html += '</div>';
@@ -10499,7 +10577,8 @@ async function saveInlineProjectEdit(projectId) {
   setField(record, 'projects', 'description', document.getElementById('inline-proj-desc').value || '');
   setField(record, 'projects', 'color', document.getElementById('inline-proj-color').value || '#6366f1');
   setField(record, 'projects', 'status', document.getElementById('inline-proj-status').value || 'active');
-  //setField(record, 'projects', 'assignee', document.getElementById('inline-proj-assignee').value || '');
+  setField(record, 'projects', 'lead', document.getElementById('inline-proj-assignee').value || '');
+  setField(record, 'projects', 'projectManager', document.getElementById('inline-proj-manager').value || '');
   try {
     await grist.docApi.applyUserActions([['UpdateRecord', PROJECTS_TABLE, projectId, record]]);
     showToast((currentLang === 'fr' ? 'Projet modifié' : 'Project updated') + ' ✓', 'success');
