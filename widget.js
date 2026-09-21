@@ -5826,9 +5826,9 @@ function renderPlanningView() {
   for (var hi = 0; hi < headers.length; hi++) {
     var h = headers[hi];
     html += '<th style="min-width:' + (planningMode === 'days' ? '55px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '"' + (h.isWeekend ? ' class="weekend"' : '') + '>';
-    html += '<div style="font-size:' + (planningMode === 'days' ? '9px' : '11px') + ';font-weight:800;">' + h.label + '</div>';
+    html += '<div style="font-size:' + (planningMode === 'days' ? '10px' : '11px') + ';font-weight:800;">' + h.label + '</div>';
     if (h.subtitle) {
-      html += '<div style="font-size:' + (planningMode === 'days' ? '8px' : '9px') + ';font-weight:400;color:#94a3b8;">' + h.subtitle + '</div>';
+      html += '<div style="font-size:' + (planningMode === 'days' ? '10px' : '11px') + ';font-weight:400;color:#94a3b8;">' + h.subtitle + '</div>';
     }
     html += '</th>';
   }
