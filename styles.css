@@ -3914,14 +3914,15 @@
       color: #cbd5e1;
     }
     .planning-cell.weekend-col {
-      background: #fafbfc;
+      /*background: #fafbfc;*/
+      background: #f1f3f5;
     }
     .planning-row {
       cursor: pointer;
       transition: background 0.15s;
     }
     .planning-row:hover {
-      background: #fafbfc;
+      background: #f7f8f9;
     }
     .planning-user-label {
       text-align: left;

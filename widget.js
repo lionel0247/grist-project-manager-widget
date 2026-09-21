@@ -5871,8 +5871,7 @@ function renderPlanningView() {
       
       // Calculate height to contain stacked tasks (24px per task)
       var cellMinHeight = Math.max(24, overlappingTasks.length * 24);
-      html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px;" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
-      
+      html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px; ' + (h2.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + ';" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
       // Render each overlapping task as a bar in this cell
       var barIndex = 0;
       overlappingTasks.forEach(function(task) {
