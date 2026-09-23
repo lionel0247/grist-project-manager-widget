@@ -1346,6 +1346,7 @@
       cursor: pointer;
       transition: all 0.15s;
       border: 2px solid transparent;
+      overflow: hidden;
     }
     .calendar-day:hover {
       background: #f1f5f9;
@@ -1393,7 +1394,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      cursor: pointer;
+      cursor: grab;
       transition: transform 0.1s;
     }
     .day-task:hover {
@@ -1422,9 +1423,6 @@
       text-align: center;
       padding: 2px;
     }
-    .day-task {
-      cursor: grab;
-    }
     .day-task:active {
       cursor: grabbing;
     }
@@ -1441,6 +1439,7 @@
     }
     .calendar-days.week-view .calendar-day {
       min-height: 300px;
+      overflow: hidden;
     }
     .calendar-days.week-view .day-tasks {
       max-height: none;
