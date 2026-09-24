@@ -5207,7 +5207,22 @@ function renderGanttView() {
     html += '<span>' + t('ganttViewRange') + ' ' + viewStartMonth + ' - ' + viewEndMonth + ' ' + ganttYear + '</span>';
     html += '</div></div>';
 
-    document.getElementById('gantt-view').innerHTML = html;
+    var ganttContainer = document.getElementById('gantt-view');
+    if (ganttContainer) {
+      // Save scroll position before re-rendering
+      var oldScrollEl = ganttContainer.querySelector('.gantt-container');
+      var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
+      var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
+      
+      ganttContainer.innerHTML = html;
+      
+      // Restore scroll position after re-rendering
+      var newScrollEl = ganttContainer.querySelector('.gantt-container');
+      if (newScrollEl) {
+        newScrollEl.scrollLeft = savedGanttScrollLeft;
+        newScrollEl.scrollTop = savedGanttScrollTop;
+      }
+    }
     initGanttDragScroll();
     return;
   }
@@ -5332,7 +5347,22 @@ function renderGanttView() {
     html += '<span>' + t('ganttViewRange') + ' ' + rangeLabel + '</span>';
     html += '</div></div>';
 
-    document.getElementById('gantt-view').innerHTML = html;
+    var ganttContainer = document.getElementById('gantt-view');
+    if (ganttContainer) {
+      // Save scroll position before re-rendering
+      var oldScrollEl = ganttContainer.querySelector('.gantt-container');
+      var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
+      var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
+      
+      ganttContainer.innerHTML = html;
+      
+      // Restore scroll position after re-rendering
+      var newScrollEl = ganttContainer.querySelector('.gantt-container');
+      if (newScrollEl) {
+        newScrollEl.scrollLeft = savedGanttScrollLeft;
+        newScrollEl.scrollTop = savedGanttScrollTop;
+      }
+    }
     initGanttDragScroll();
     return;
   }
@@ -5429,7 +5459,22 @@ function renderGanttView() {
     html += '<span>' + t('ganttViewRange') + ' ' + monthNames[0] + ' - ' + monthNames[11] + ' ' + ganttYear + '</span>';
     html += '</div></div>';
 
-    document.getElementById('gantt-view').innerHTML = html;
+    var ganttContainer = document.getElementById('gantt-view');
+    if (ganttContainer) {
+      // Save scroll position before re-rendering
+      var oldScrollEl = ganttContainer.querySelector('.gantt-container');
+      var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
+      var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
+      
+      ganttContainer.innerHTML = html;
+      
+      // Restore scroll position after re-rendering
+      var newScrollEl = ganttContainer.querySelector('.gantt-container');
+      if (newScrollEl) {
+        newScrollEl.scrollLeft = savedGanttScrollLeft;
+        newScrollEl.scrollTop = savedGanttScrollTop;
+      }
+    }
     initGanttDragScroll();
     return;
   }
@@ -5593,7 +5638,22 @@ function renderGanttView() {
   html += '<span>' + t('ganttViewRange') + ' ' + viewStart + ' - ' + viewEnd + ' ' + ganttYear + '</span>';
   html += '</div></div>';
 
-  document.getElementById('gantt-view').innerHTML = html;
+  var ganttContainer = document.getElementById('gantt-view');
+  if (ganttContainer) {
+    // Save scroll position before re-rendering
+    var oldScrollEl = ganttContainer.querySelector('.gantt-container');
+    var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
+    var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
+    
+    ganttContainer.innerHTML = html;
+    
+    // Restore scroll position after re-rendering
+    var newScrollEl = ganttContainer.querySelector('.gantt-container');
+    if (newScrollEl) {
+      newScrollEl.scrollLeft = savedGanttScrollLeft;
+      newScrollEl.scrollTop = savedGanttScrollTop;
+    }
+  }
   initGanttDragScroll();
 }
 
@@ -6051,6 +6111,11 @@ function renderPlanningView() {
   
   var container = document.getElementById('planning-view');
   if (container) {
+    // Save scroll position before re-rendering
+    var scrollContainer = container.querySelector('.gantt-container, .planning-container');
+    var savedScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+    var savedScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+    
     container.innerHTML = html;
     // Add click handler for user expansion
     container.querySelectorAll('.planning-user-expand').forEach(function(el) {
@@ -6060,6 +6125,13 @@ function renderPlanningView() {
         togglePlanningUser(user);
       };
     });
+    
+    // Restore scroll position after re-rendering
+    var newScrollContainer = container.querySelector('.gantt-container, .planning-container');
+    if (newScrollContainer) {
+      newScrollContainer.scrollLeft = savedScrollLeft;
+      newScrollContainer.scrollTop = savedScrollTop;
+    }
   }
   planningAfterRender();
 }
