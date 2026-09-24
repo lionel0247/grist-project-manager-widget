@@ -4999,6 +4999,7 @@ function ganttBarGeom(barStart, barEnd, cols, colWidth) {
 // C1 : « Aujourd'hui » doit amener le jour courant au milieu du diagramme,
 // pas au debut du premier mois de la fenetre.
 var ganttPendingCenter = false;
+var planningPendingCenter = false;
 
 function ganttCenterOnToday() {
   var container = document.querySelector('#gantt-view .gantt-container');
@@ -5014,6 +5015,23 @@ function ganttAfterRender() {
   if (!ganttPendingCenter) return;
   ganttPendingCenter = false;
   requestAnimationFrame(function() { ganttCenterOnToday(); });
+}
+
+// C1 : « Aujourd'hui » doit amener le jour courant au milieu du planning
+function planningCenterOnToday() {
+  var container = document.querySelector('#planning-view .gantt-container');
+  var col = document.getElementById('planning-today-col');
+  if (!container || !col) return;
+  var labelEl = container.querySelector('.gantt-task-label');
+  var labelW = labelEl ? labelEl.offsetWidth : 220;
+  var visible = Math.max(0, container.clientWidth - labelW);
+  container.scrollLeft = Math.max(0, col.offsetLeft + col.offsetWidth / 2 - labelW - visible / 2);
+}
+
+function planningAfterRender() {
+  if (!planningPendingCenter) return;
+  planningPendingCenter = false;
+  requestAnimationFrame(function() { planningCenterOnToday(); });
 }
 
 function renderGanttView() {
@@ -5940,7 +5958,8 @@ function renderPlanningView() {
   html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colAssignee') + '</th>';
   for (var hi = 0; hi < headers.length; hi++) {
     var h = headers[hi];
-    html += '<th style="min-width:' + (planningMode === 'days' ? '55px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '"' + (h.isWeekend ? ' class="weekend"' : '') + '>';
+    var todayId = h.isCurrent ? ' id="planning-today-col"' : '';
+    html += '<th style="min-width:' + (planningMode === 'days' ? '55px' : planningMode === 'weeks' ? '80px' : '100px') + ';' + (h.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + '"' + todayId + (h.isWeekend ? ' class="weekend"' : '') + '>';
     html += '<div style="font-size:' + (planningMode === 'days' ? '10px' : '11px') + ';font-weight:800;">' + h.label + '</div>';
     if (h.subtitle) {
       html += '<div style="font-size:' + (planningMode === 'days' ? '10px' : '11px') + ';font-weight:400;color:#94a3b8;">' + h.subtitle + '</div>';
@@ -6042,6 +6061,7 @@ function renderPlanningView() {
       };
     });
   }
+  planningAfterRender();
 }
 
 function getUserColor(user) {
@@ -6137,6 +6157,7 @@ function generatePlanningHeadersCustom(startDate, endDate, lang) {
 
 function setPlanningMode(mode) {
   planningMode = mode;
+  planningPendingCenter = true;   // C1 : chaque changement d'echelle recentre sur aujourd'hui
   document.querySelectorAll('[data-planning-mode]').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-planning-mode') === mode);
   });
@@ -6183,6 +6204,7 @@ function planningNav(dir) {
 function planningToday() {
   planningYear = new Date().getFullYear();
   planningMonth = new Date().getMonth();
+  planningPendingCenter = true;   // C1 : recentrer sur le jour courant
   renderPlanningView();
 }
 
