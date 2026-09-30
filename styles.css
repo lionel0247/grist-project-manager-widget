@@ -1693,6 +1693,27 @@
     .gantt-bar-done { background: linear-gradient(135deg, #22c55e, #4ade80); }
     .gantt-bar-overdue { background: linear-gradient(135deg, #ef4444, #f87171); }
 
+    /* Duration-based bar styling for Planning view */
+    .gantt-bar-wrapper {
+      position: relative;
+      background: white;
+    }
+    .gantt-bar-wrapper .gantt-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+    /* Triangle inférieur gauche (Matin) */
+    .gantt-bar.duration-morning {
+      clip-path: polygon(0% 100%, 100% 100%, 0% 0%);
+    }
+    /* Triangle supérieur droit (Après-midi) */
+    .gantt-bar.duration-afternoon {
+      clip-path: polygon(100% 0%, 100% 100%, 0% 0%);
+    }
+
     /* Libellé de tâche cliquable (ouvre la modale) */
     .gantt-clickable-label { cursor: pointer; transition: background 0.15s; }
     .gantt-clickable-label:hover { background: #fef2f2; }

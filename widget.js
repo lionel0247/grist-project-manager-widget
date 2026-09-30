@@ -982,7 +982,8 @@ var columnMapping = {
     recurrence: 'Recurrence',
     estimatedHours: 'Estimated_Hours',
     createdAt: 'Created_At',
-    projectId: 'Project_Id'
+    projectId: 'Project_Id',
+    duration: 'Duration'
   },
   users: {
     name: 'Name',
@@ -2042,8 +2043,15 @@ async function ensureTables() {
         ]);
         console.log('[GristPM] Project_Id ajouté à PM_Tasks');
       }
+      // Add Duration column for task duration (Journée/Matin/Après-midi)
+      if (taskColsCheck.indexOf('Duration') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', TASKS_TABLE, 'Duration', { type: 'Text' }]
+        ]);
+        console.log('[GristPM] Duration ajouté à PM_Tasks');
+      }
     } catch (e) {
-      console.log('[GristPM] Migration Project_Id ignorée :', e.message);
+      console.log('[GristPM] Migration Project_Id/Duration ignorée :', e.message);
     }
 
     // Migration Group_Name / Tag / Recurrence sur PM_Templates
@@ -2321,6 +2329,7 @@ async function loadAllData() {
         var estimatedHoursCol = getColumnName('tasks', 'estimatedHours');
         var createdAtCol = getColumnName('tasks', 'createdAt');
         var projectIdCol = getColumnName('tasks', 'projectId');
+        var durationCol = getColumnName('tasks', 'duration');
         
         task.Title = taskData[titleCol] ? taskData[titleCol][i] : '';
         task.Description = taskData[descCol] ? taskData[descCol][i] : '';
@@ -2336,6 +2345,7 @@ async function loadAllData() {
         task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
         task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
         task.Project_Id = taskData[projectIdCol] ? taskData[projectIdCol][i] : null;
+        task.Duration = taskData[durationCol] ? taskData[durationCol][i] : null;
 
         task.Accountable = taskData.Accountable ? taskData.Accountable[i] || '' : '';
         task.Consulted = taskData.Consulted ? taskData.Consulted[i] || '' : '';
@@ -6093,11 +6103,33 @@ function renderPlanningView() {
           var tooltip = sanitize(task.Title || '') + '\n' + 
                         (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(task.Status || '') + '\n' +
                         (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(task.Priority || '');
-          html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="event.stopPropagation();openEditTaskModal(' + task.id + ')">';
-          if (widthPercent > 30) {
-            html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
+          
+          // Duration-based styling for Planning view
+          var durationClass = '';
+          if (task.Duration === 'Matin') {
+            durationClass = 'duration-morning';
+          } else if (task.Duration === 'Après-midi') {
+            durationClass = 'duration-afternoon';
           }
-          html += '</div>';
+          
+          var onClickHandler = 'event.stopPropagation();openEditTaskModal(' + task.id + ')';
+          
+          if (durationClass) {
+            // For Matin/Après-midi: wrapper with white background + bar with clip-path
+            html += '<div class="gantt-bar-wrapper" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
+            html += '<div class="gantt-bar ' + barClass + ' ' + durationClass + '" style="position:absolute;top:0;left:0;right:0;bottom:0;' + (barCustomColor ? 'background:' + barCustomColor + ';' : '') + '">';
+            if (widthPercent > 30) {
+              html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white;">' + sanitize(task.Title || '') + '</span>';
+            }
+            html += '</div></div>';
+          } else {
+            // For Journée: normal bar
+            html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
+            if (widthPercent > 30) {
+              html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
+            }
+            html += '</div>';
+          }
           barIndex++;
         }
       });
@@ -7092,6 +7124,11 @@ function openNewTaskModal(defaultStatus) {
   html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t('fieldDescription') + '"></textarea></div>';
   html += '</div>';
 
+  // Duration
+  html += '<div class="detail-field">';
+  html += '<div class="detail-field-value" style="display:flex;gap:10px;"><label style="display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="task-duration" id="task-duration-journee" value="Journée" checked> Journée </label><label style="display:inline-flex;align-items:center;gap:5px;"><input type="radio" name="task-duration" id="task-duration-matin" value="Matin"> Matin </label><label style="display:inline-flex;align-items:center;gap:5px;"><input type="radio" name="task-duration" id="task-duration-apresmidi" value="Après-midi"> Après-midi</label></div>';
+  html += '</div>';
+
   // Assignees (multi) — or RACI roles
   if (raciEnabled) {
     html += renderRaciField('R', t('raciResponsible'), 'assignee', 'editAssignees');
@@ -7254,6 +7291,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   var task = tasks.find(function(t) { return t.id === taskId; });
   if (!task) return;
 
+  // Set duration radio based on task.Duration (texte -> radio value)
+  var currentDurationRadio = getRadioValueFromDuration(task.Duration);
+
   if (!preserveAssignees) {
     editAssignees = task.Assignee ? task.Assignee.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
     editAccountable = task.Accountable ? task.Accountable.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
@@ -7301,6 +7341,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
   // Description
   html += '<div class="detail-field">';
   html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t('fieldDescription') + '">' + sanitize(task.Description) + '</textarea></div>';
+  html += '</div>';
+
+  // Duration
+  html += '<div class="detail-field">';
+  var journeeChecked = (currentDurationRadio === 'Journée') ? ' checked' : '';
+  var matinChecked = (currentDurationRadio === 'Matin') ? ' checked' : '';
+  var apresmidiChecked = (currentDurationRadio === 'Après-midi') ? ' checked' : '';
+  html += '<div class="detail-field-value" style="display:flex;gap:10px;"><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-journee" value="Journée"' + journeeChecked + '> Journée </label><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-matin" value="Matin"' + matinChecked + '> Matin </label><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-apresmidi" value="Après-midi"' + apresmidiChecked + '> Après-midi</label></div>';
   html += '</div>';
 
   // Assignees (multi) — or RACI roles
@@ -8923,6 +8971,26 @@ function closeModalForce() {
 // CRUD OPERATIONS
 // =============================================================================
 
+// ============================================================
+// Helper functions for task duration (Journée/Matin/Après-midi)
+// Stocke directement le texte dans la colonne Duration
+// ============================================================
+function getDurationFromRadio() {
+  var radio = document.querySelector('input[name="task-duration"]:checked');
+  return radio ? radio.value : 'Journée'; // Default: Journée
+}
+
+function getRadioValueFromDuration(durationText) {
+  // Si Duration est vide/null/undefined, retourne 'Journée' par défaut
+  if (!durationText) return 'Journée';
+  // Normaliser la valeur (trim + minuscules) pour éviter les problèmes de casse/espaces
+  var val = String(durationText).trim().toLowerCase();
+  if (val === 'journée' || val === 'journee') return 'Journée';
+  if (val === 'matin') return 'Matin';
+  if (val === 'après-midi' || val === 'apres-midi' || val === 'après midi') return 'Après-midi';
+  return 'Journée';
+}
+
 async function createTask() {
   var title = document.getElementById('task-title').value.trim();
   if (!title) return;
@@ -8949,6 +9017,9 @@ async function createTask() {
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
   record.Auto_Extend = true;
+
+  // Duration from radio buttons (stored as text: Journée/Matin/Après-midi)
+  setField(record, 'tasks', 'duration', getDurationFromRadio());
 
   // Add Tag only if the element exists
   var tagEl = document.getElementById('task-tag');
@@ -9018,6 +9089,9 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
+
+  // Duration from radio buttons (stored as text: Journée/Matin/Après-midi)
+  setField(record, 'tasks', 'duration', getDurationFromRadio());
   
   // Add Tag only if the element exists
   var tagEl = document.getElementById('task-tag');
