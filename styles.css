@@ -1669,6 +1669,7 @@
     .gantt-cell.today-col { background: #fef2f2; }
     .gantt-cell.weekend-col { background: #fafbfc; }
     .gantt-bar {
+      --gantt-bar-bg: linear-gradient(135deg, #3b82f6, #60a5fa);
       position: absolute;
       top: 6px;
       height: 24px;
@@ -1706,27 +1707,22 @@
       right: 0;
       bottom: 0;
     }
-    /* Triangle inférieur gauche (Matin) - fond gris avec partie active en couleur */
-    .gantt-bar.duration-morning {
-      background: #d3d3d3 !important;
-      position: relative;
-    }
-    .gantt-bar.duration-morning::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      clip-path: polygon(0% 100%, 100% 100%, 10% 0%, 0% 0%);
-      background: var(--gantt-bar-bg);
-      z-index: -1;
-    }
-    /* Triangle supérieur droit (Après-midi) - fond gris avec partie active en couleur */
+    /* Proposition 5 - Structure à 3 couches (CSS uniquement, HTML inchangé) */
+    .gantt-bar.duration-morning,
     .gantt-bar.duration-afternoon {
-      background: #d3d3d3 !important;
       position: relative;
     }
+    /* DÉFINIR LES CLIP-PATH - CORRIGÉS */
+    .gantt-bar.duration-morning {
+      --color-clip: polygon(0% 100%, 100% 100%, 90% 0%, 0% 0%);
+      --grey-clip: polygon(90% 0%, 100% 0%, 100% 100%, 0% 100%);
+    }
+    .gantt-bar.duration-afternoon {
+      --color-clip: polygon(100% 0%, 100% 100%, 10% 100%, 0% 0%);
+      --grey-clip: polygon(100% 0%, 0% 0%, 0% 100%, 10% 100%);
+    }
+    /* COUCHE 1 : Fond coloré (héritage direct via inherit) */
+    .gantt-bar.duration-morning::before,
     .gantt-bar.duration-afternoon::before {
       content: '';
       position: absolute;
@@ -1734,10 +1730,24 @@
       left: 0;
       right: 0;
       bottom: 0;
-      clip-path: polygon(100% 0%, 100% 100%, 90% 100%, 0% 0%);
-      background: var(--gantt-bar-bg);
+      background: inherit; /* Hérite directement du parent (.gantt-bar-todo etc.) */
+      clip-path: var(--color-clip);
+      z-index: -2;
+    }
+    /* COUCHE 2 : Fond gris (partie non concernée) */
+    .gantt-bar.duration-morning::after,
+    .gantt-bar.duration-afternoon::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #d3d3d3;
+      clip-path: var(--grey-clip);
       z-index: -1;
     }
+    /* COUCHE 3 : Texte (déjà géré par .gantt-bar avec z-index: 2) */
 
     /* Libellé de tâche cliquable (ouvre la modale) */
     .gantt-clickable-label { cursor: pointer; transition: background 0.15s; }
