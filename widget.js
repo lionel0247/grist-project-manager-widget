@@ -6100,9 +6100,10 @@ function renderPlanningView() {
         if (widthPercent > 2) {
           // Stack bars vertically to avoid overlap
           var topOffset = barIndex * 24; // 24px offset for each additional task (matches bar height)
-          var tooltip = sanitize(task.Title || '') + '\n' + 
-                        (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(task.Status || '') + '\n' +
-                        (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(task.Priority || '');
+          var tooltip = sanitize(task.Title || '') + '\n' +
+                        (currentLang === 'fr' ? 'Projet' : 'Project') + ': ' + sanitize((getProjectName(task.Project_Id)) || '') + '\n' +
+                        (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(statusLabel(task.Status) || '') + '\n' +
+                        (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(priorityLabel(task.Priority) || '');
           
           // Duration-based styling for Planning view
           var durationClass = '';
