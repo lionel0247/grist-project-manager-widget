@@ -1714,12 +1714,12 @@
     }
     /* DÉFINIR LES CLIP-PATH - CORRIGÉS */
     .gantt-bar.duration-morning {
-      --color-clip: polygon(0% 100%, 100% 100%, 90% 0%, 0% 0%);
-      --grey-clip: polygon(90% 0%, 100% 0%, 100% 100%, 0% 100%);
+      --color-clip: polygon(0% 100%, 100% 100%, 100% 0%, 0% 0%);
+      --grey-clip: polygon(100% 0%, 5% 100%, 100% 100%);
     }
     .gantt-bar.duration-afternoon {
-      --color-clip: polygon(100% 0%, 100% 100%, 10% 100%, 0% 0%);
-      --grey-clip: polygon(100% 0%, 0% 0%, 0% 100%, 10% 100%);
+      --color-clip: polygon(100% 0%, 100% 100%, 0% 100%, 0% 0%);
+      --grey-clip: polygon(0% 0%, 0% 100%, 95% 0%);
     }
     /* COUCHE 1 : Fond coloré (héritage direct via inherit) */
     .gantt-bar.duration-morning::before,
