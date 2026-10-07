@@ -2311,26 +2311,25 @@ async function loadAllData() {
     var taskData = await grist.docApi.fetchTable(TASKS_TABLE);
     tasks = [];
     if (taskData && taskData.id) {
+      // Noms de colonnes résolus une seule fois (et non plus à chaque itération)
+      var titleCol = getColumnName('tasks', 'title');
+      var descCol = getColumnName('tasks', 'description');
+      var statusCol = getColumnName('tasks', 'status');
+      var priorityCol = getColumnName('tasks', 'priority');
+      var assigneeCol = getColumnName('tasks', 'assignee');
+      var groupCol = getColumnName('tasks', 'group');
+      var startDateCol = getColumnName('tasks', 'startDate');
+      var dueDateCol = getColumnName('tasks', 'dueDate');
+      var categoryCol = getColumnName('tasks', 'category');
+      var tagCol = getColumnName('tasks', 'tag');
+      var recurrenceCol = getColumnName('tasks', 'recurrence');
+      var estimatedHoursCol = getColumnName('tasks', 'estimatedHours');
+      var createdAtCol = getColumnName('tasks', 'createdAt');
+      var projectIdCol = getColumnName('tasks', 'projectId');
+      var durationCol = getColumnName('tasks', 'duration');
       for (var i = 0; i < taskData.id.length; i++) {
         var task = { id: taskData.id[i] };
-        
-        // Use column mapping to load data
-        var titleCol = getColumnName('tasks', 'title');
-        var descCol = getColumnName('tasks', 'description');
-        var statusCol = getColumnName('tasks', 'status');
-        var priorityCol = getColumnName('tasks', 'priority');
-        var assigneeCol = getColumnName('tasks', 'assignee');
-        var groupCol = getColumnName('tasks', 'group');
-        var startDateCol = getColumnName('tasks', 'startDate');
-        var dueDateCol = getColumnName('tasks', 'dueDate');
-        var categoryCol = getColumnName('tasks', 'category');
-        var tagCol = getColumnName('tasks', 'tag');
-        var recurrenceCol = getColumnName('tasks', 'recurrence');
-        var estimatedHoursCol = getColumnName('tasks', 'estimatedHours');
-        var createdAtCol = getColumnName('tasks', 'createdAt');
-        var projectIdCol = getColumnName('tasks', 'projectId');
-        var durationCol = getColumnName('tasks', 'duration');
-        
+
         task.Title = taskData[titleCol] ? taskData[titleCol][i] : '';
         task.Description = taskData[descCol] ? taskData[descCol][i] : '';
         task.Status = taskData[statusCol] ? taskData[statusCol][i] : 'todo';
@@ -3615,7 +3614,7 @@ async function onCalendarDrop(event, dateStr) {
 }
 
 function openNewTaskModalWithDate(dateStr) {
-  return startNewTask(null, dateStr); // brouillon avec date pré-remplie -> éditeur complet
+  return startNewTaskFast(null, dateStr); // éditeur optimiste avec date pré-remplie
 }
 
 function calendarNav(dir) {
@@ -6423,7 +6422,7 @@ function onPlanningDayClick(user, taskId, date) {
     openEditTaskModal(taskId);
   } else {
     // Open new task modal with assignee and date pre-filled
-    startNewTask(null, date, { assignee: user });
+    startNewTaskFast(null, date, { assignee: user });
   }
 }
 
@@ -7087,7 +7086,7 @@ async function deleteGroup(groupId) {
 // =============================================================================
 
 function openNewTaskModal(defaultStatus) {
-  return startNewTask(defaultStatus); // approche brouillon -> éditeur complet
+  return startNewTaskFast(defaultStatus); // éditeur optimiste -> création du brouillon en arrière-plan
   // --- ancien formulaire de création (désactivé, conservé pour référence) ---
   editAssignees = [];
   editAccountable = [];
@@ -7257,6 +7256,7 @@ var editAccountable = [];
 var editConsulted = [];
 var editInformed = [];
 var draftTaskId = null; // id de la tâche brouillon en cours de création (approche "créer puis éditer")
+var pendingDraftCreation = null; // { tempId, promise } : création optimiste en cours de finalisation
 
 // Crée une tâche brouillon immédiatement puis ouvre l'éditeur COMPLET.
 // À la fermeture : si un titre a été saisi -> enregistrée ; sinon -> brouillon supprimé.
@@ -7283,9 +7283,109 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
     var newId = (res && res.retValues && res.retValues[0]) || null;
     if (!newId) { showToast('Error', 'error'); return; }
     draftTaskId = newId;
-    await loadAllData();
     openEditTaskModal(newId);
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// Ouvre l'éditeur immédiatement (rendu optimiste) : une tâche brouillon locale
+// est insérée dans tasks[] sans recharger les données, le AddRecord part en
+// arrière-plan, et l'éditeur complet est re-rendu dès que l'id réel est connu.
+async function startNewTaskFast(defaultStatus, dateStr, prefill) {
+  prefill = prefill || {};
+  var statuses = getKanbanStatuses();
+  var statusKey = defaultStatus || (statuses[0] && statuses[0].key) || 'todo';
+  var startDate = dateStr ? toEpoch(dateStr) : null;
+
+  // Brouillon local temporaire : id négatif pour éviter toute collision
+  var tempId = -Date.now();
+  var draft = {
+    id: tempId,
+    Title: prefill.title || '',
+    Description: prefill.description || '',
+    Status: statusKey,
+    Priority: prefill.priority || 'medium',
+    Assignee: prefill.assignee || '',
+    Group_Name: prefill.group || '',
+    Start_Date: startDate,
+    Due_Date: startDate,
+    Category: prefill.category || '',
+    Tag: prefill.tag || '',
+    Recurrence: prefill.recurrence && prefill.recurrence !== 'none' ? prefill.recurrence : 'none',
+    Estimated_Hours: prefill.estimatedHours || 0,
+    Created_At: Math.floor(Date.now() / 1000),
+    Project_Id: currentProjectId || null,
+    Duration: null,
+    Accountable: '',
+    Consulted: '',
+    Informed: '',
+    Extension_Date: null,
+    Auto_Extend: true
+  };
+  tasks.push(draft);
+  draftTaskId = tempId;
+  openEditTaskModal(tempId);
+
+  var creationPromise = (async function() {
+  // Création du brouillon côté Grist en arrière-plan
+  var record = {};
+  setField(record, 'tasks', 'title', draft.Title);
+  setField(record, 'tasks', 'status', draft.Status);
+  setField(record, 'tasks', 'priority', draft.Priority);
+  if (prefill.assignee) setField(record, 'tasks', 'assignee', prefill.assignee);
+  if (prefill.description) setField(record, 'tasks', 'description', prefill.description);
+  if (prefill.category) setField(record, 'tasks', 'category', prefill.category);
+  if (prefill.group) setField(record, 'tasks', 'group', prefill.group);
+  if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
+  if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
+  if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
+  if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
+  setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  record.Auto_Extend = true;
+  if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
+
+  // Si l'utilisateur ferme la modale avant la fin du AddRecord, la fermeture est
+  // déjà gérée : closeModalForce attend l'id réel pour supprimer le brouillon
+  // vide, ou updateTask enregistre la saisie une fois l'id connu.
+  var stillOpen = function() { return draftTaskId === tempId && !!document.getElementById('task-title'); };
+  try {
+    var res = await grist.docApi.applyUserActions([['AddRecord', TASKS_TABLE, null, record]]);
+    var _newId = (res && res.retValues && res.retValues[0]) || null;
+    if (!stillOpen()) {
+      // Modale fermée entre-temps : closeModalForce gère déjà la suppression
+      // du brouillon (sans titre) ou updateTask enregistre (avec titre).
+      tasks = tasks.filter(function(tk) { return tk.id !== tempId; });
+      return _newId;
+    }
+    var newId = (res && res.retValues && res.retValues[0]) || null;
+    tasks = tasks.filter(function(tk) { return tk.id !== tempId; });
+    if (!newId) {
+      if (draftTaskId === tempId) draftTaskId = null;
+      showToast('Error', 'error');
+      closeModalForce();
+      return;
+    }
+    draft.id = newId;
+    tasks.push(draft);
+    draftTaskId = newId;
+    // Corriger en place les handlers qui référencent l'id temporaire, sans
+    // re-rendre la modale (préserve la saisie en cours de l'utilisateur).
+    var saveBtn = document.querySelector('.modal-detail-top button.btn-primary[onclick*="updateTask"]');
+    if (saveBtn) saveBtn.setAttribute('onclick', 'updateTask(' + newId + ')');
+    var tabBtns = document.querySelectorAll('#modal-container [onclick*="(' + tempId + ')"]');
+    for (var bi = 0; bi < tabBtns.length; bi++) {
+      tabBtns[bi].setAttribute('onclick', tabBtns[bi].getAttribute('onclick').replace(/\(' + tempId + '\)/g, '(' + newId + ')'));
+    }
+    pendingDraftCreation = null;
+    return newId;
+  } catch (e) {
+    tasks = tasks.filter(function(tk) { return tk.id !== tempId; });
+    if (draftTaskId === tempId) draftTaskId = null;
+    if (stillOpen()) { showToast('Error: ' + e.message, 'error'); closeModalForce(); }
+    throw e;
+  }
+  })();
+  pendingDraftCreation = { tempId: tempId, promise: creationPromise };
+  creationPromise.catch(function() {}); // éviter un unhandled rejection si personne n'attend
 }
 
 function openEditTaskModal(taskId, preserveAssignees) {
@@ -8959,6 +9059,16 @@ function closeModalForce() {
     var did = draftTaskId; draftTaskId = null;
     var ti = document.getElementById('task-title');
     var titleVal = ti ? ti.value.trim() : '';
+    if (did < 0 && pendingDraftCreation && pendingDraftCreation.tempId === did) {
+      if (titleVal) { updateTask(did); return; } // attend l'id réel puis enregistre
+      // Brouillon vide pas encore finalisé : attendre l'id réel puis supprimer
+      document.getElementById('modal-container').innerHTML = '';
+      var _pending = pendingDraftCreation; pendingDraftCreation = null;
+      _pending.promise.then(function(realId) {
+        return grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, realId]]);
+      }).then(function() { return loadAllData(); }).then(function() { refreshAllViews(); }).catch(function() {});
+      return;
+    }
     if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
     grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]])
       .then(function () { return loadAllData(); })
@@ -9054,6 +9164,19 @@ async function createTask() {
 async function updateTask(taskId) {
   var title = document.getElementById('task-title').value.trim();
   if (!title) return;
+
+  // Brouillon optimiste pas encore finalisé côté Grist : attendre l'AddRecord
+  // en arrière-plan pour récupérer l'id réel avant tout UpdateRecord.
+  if (taskId < 0 && pendingDraftCreation && pendingDraftCreation.tempId === taskId) {
+    try {
+      taskId = await pendingDraftCreation.promise;
+    } catch (e) {
+      return; // la création a échoué, l'erreur est déjà affichée
+    }
+    pendingDraftCreation = null;
+    if (!(taskId > 0)) return;
+  }
+
   if (draftTaskId === taskId) draftTaskId = null; // ce brouillon devient une vraie tâche
 
   var task = tasks.find(function(t) { return t.id === taskId; });
@@ -9254,7 +9377,7 @@ async function useTemplate(tplId) {
   } catch (e) {}
 
   // Crée un brouillon pré-rempli depuis le modèle, puis ouvre l'éditeur COMPLET
-  startNewTask('todo', null, {
+  startNewTaskFast('todo', null, {
     title: tpl.Title || '',
     description: tpl.Description || '',
     priority: tpl.Priority || 'medium',
