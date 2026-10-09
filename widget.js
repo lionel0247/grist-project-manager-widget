@@ -5014,7 +5014,7 @@ function getGanttSubtasks(taskId) {
 // Construit la <td> de libellé d'une sous-tâche (indentée, allégée, cliquable)
 function renderGanttSubtaskLabelCell(st, parentTaskId) {
   var completedClass = st.Completed ? ' style="text-decoration:line-through;opacity:0.5;"' : '';
-  var html = '<td class="gantt-task-label gantt-subtask-cell gantt-clickable-label" onclick="openEditTaskModal(' + parentTaskId + ')"' + completedClass + '>';
+  var html = '<td class="gantt-task-label gantt-subtask-cell gantt-clickable-label" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')" onclick="openEditTaskModal(' + parentTaskId + ')"' + completedClass + '>';
   html += '<span style="font-size:10px;color:#94a3b8;margin-right:4px;">' + (isMilestone(st) ? '◆' : '↳') + '</span>';
   html += '<span style="font-size:11px;' + (isMilestone(st) ? 'font-weight:700;' : '') + '">' + sanitize(st.Title) + '</span>';
   // A1 : indicateur de dépendance entre sous-tâches
@@ -5122,7 +5122,7 @@ function renderGanttTaskLabel(task) {
   var ganttProjColor = getProjectColor(task.Project_Id);
   var ganttProjName = getProjectName(task.Project_Id);
 
-  var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
+  var html = '<td class="gantt-task-label gantt-clickable-label" draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')" onclick="openEditTaskModal(' + task.id + ')">';
   html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>';
   if (ganttProjName) html += ' <span style="display:inline-block;background:' + ganttProjColor + ';color:white;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;vertical-align:middle;">' + sanitize(ganttProjName) + '</span>';
   html += ganttDepBadge(task) + '</div>';
@@ -5326,7 +5326,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
+      html += '<tr>';
       html += renderGanttTaskLabel(task);
 
       var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5366,7 +5366,7 @@ function renderGanttView() {
           var stRange = getGanttSubtaskRange(st, task);
           var stBarClass = ganttSubtaskBarClass(st, task);
           var stGeom = ganttBarGeom(stRange.start, stRange.end, weeks, weekColW);
-          html += '<tr class="gantt-subtask-row" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')">' + renderGanttSubtaskLabelCell(st, task.id);
+          html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
           for (var wi2 = 0; wi2 < weeks.length; wi2++) {
             html += '<td class="gantt-cell' + (wi2 === wTodayIdx ? ' today-col' : '') + '" style="position:relative;min-width:' + weekColW + 'px;">';
             if (stGeom && wi2 === stGeom.idx) {
@@ -5440,7 +5440,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">' + renderGanttTaskLabel(task);
+      html += '<tr>' + renderGanttTaskLabel(task);
 
       var yTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
       var yTEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5496,7 +5496,7 @@ function renderGanttView() {
           var st = sts[sti];
           var stRange = getGanttSubtaskRange(st, task);
           var stBarClass = ganttSubtaskBarClass(st, task);
-          html += '<tr class="gantt-subtask-row" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')">' + renderGanttSubtaskLabelCell(st, task.id);
+          html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
           var stYStart = -1, stYEnd = -1;
           for (var ym3 = 0; ym3 < totalMonths; ym3++) {
             var yr3 = startYr + Math.floor(ym3 / 12);
@@ -5577,7 +5577,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
+      html += '<tr>';
       html += renderGanttTaskLabel(task);
 
       var mTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5617,7 +5617,7 @@ function renderGanttView() {
           var stRange = getGanttSubtaskRange(st, task);
           var stBarClass = ganttSubtaskBarClass(st, task);
           var stGeom = ganttBarGeom(stRange.start, stRange.end, months, monthColW);
-          html += '<tr class="gantt-subtask-row" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')">' + renderGanttSubtaskLabelCell(st, task.id);
+          html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
           for (var m2 = 0; m2 < 12; m2++) {
             var isTodayMonth2 = (ganttYear === todayYear && m2 === todayMonth);
             html += '<td class="gantt-cell' + (isTodayMonth2 ? ' today-col' : '') + '" style="position:relative;min-width:' + monthColW + 'px;">';
@@ -5714,7 +5714,7 @@ function renderGanttView() {
     var barClass = getGanttBarClass(task);
     var barCustomColor = getGanttBarColor(task);
     var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-    html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
+    html += '<tr>';
     html += renderGanttTaskLabel(task);
 
     var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5792,7 +5792,7 @@ function renderGanttView() {
             stBarEndIdx = di2;
           }
         }
-        html += '<tr class="gantt-subtask-row" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')">' + renderGanttSubtaskLabelCell(st, task.id);
+        html += '<tr class="gantt-subtask-row">' + renderGanttSubtaskLabelCell(st, task.id);
         for (var di2 = 0; di2 < days.length; di2++) {
           var dd2 = days[di2];
           var isToday2 = dd2.getTime() === today.getTime();

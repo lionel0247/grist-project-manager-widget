@@ -4203,3 +4203,18 @@ tr.wbs-drop-after {
 tr[draggable="true"]:hover {
   cursor: grab;
 }
+
+/* WBS : poignée de drag uniquement sur le libellé de tâche du Gantt */
+td.gantt-task-label[draggable="true"]:hover {
+  cursor: grab;
+}
+td.gantt-task-label.wbs-drop-target {
+  outline: 2px dashed #6366f1;
+  outline-offset: -2px;
+}
+td.gantt-task-label.wbs-drop-before {
+  box-shadow: inset 0 3px 0 0 #6366f1;
+}
+td.gantt-task-label.wbs-drop-after {
+  box-shadow: inset 0 -3px 0 0 #6366f1;
+}
