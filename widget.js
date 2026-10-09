@@ -5326,7 +5326,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
+      html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
       html += renderGanttTaskLabel(task);
 
       var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5577,7 +5577,7 @@ function renderGanttView() {
       var barClass = getGanttBarClass(task);
       var barCustomColor = getGanttBarColor(task);
       var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
+      html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
       html += renderGanttTaskLabel(task);
 
       var mTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -5714,7 +5714,7 @@ function renderGanttView() {
     var barClass = getGanttBarClass(task);
     var barCustomColor = getGanttBarColor(task);
     var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-    html += '<tr>';
+    html += '<tr draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')">';
     html += renderGanttTaskLabel(task);
 
     var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
