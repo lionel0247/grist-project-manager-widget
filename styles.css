@@ -4189,3 +4189,17 @@
       margin-top: 20px;
     }
     .app-footer a { color: #ef4444; text-decoration: none; }
+/* WBS drag & drop : mise en évidence de la ligne cible */
+tr.wbs-drop-target {
+  outline: 2px dashed #6366f1;
+  outline-offset: -2px;
+}
+tr.wbs-drop-before {
+  box-shadow: inset 0 3px 0 0 #6366f1;
+}
+tr.wbs-drop-after {
+  box-shadow: inset 0 -3px 0 0 #6366f1;
+}
+tr[draggable="true"]:hover {
+  cursor: grab;
+}
