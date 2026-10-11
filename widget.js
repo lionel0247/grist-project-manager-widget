@@ -4957,20 +4957,43 @@ function getGanttBarClass(task) {
   return 'gantt-bar-todo';
 }
 
-function renderGanttTaskLabel(task) {
+function renderGanttProjectTaskLabel(projectId, task) {
+  var proj = projects.find(function(p) { return p.id == projectId; });
+  var projName = proj && proj.Name ? sanitize(proj.Name) : (projectId ? 'Projet #' + projectId : '');
+  var managerName = '';
+  if (proj && proj.CdpBep) {
+    var manager = findUserByIdent(proj.CdpBep);
+    managerName = manager ? sanitize(manager.Name || manager.Email || proj.CdpBep) : sanitize(proj.CdpBep);
+  }
+  var color = proj ? (proj.Color || '#6366f1') : '#94a3b8';
+  
+  // Retourne le HTML pour l'en-tête de projet + tâche combinés
   var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
-  var assigneeNames = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
-  var ganttProjColor = getProjectColor(task.Project_Id);
-  var ganttProjName = getProjectName(task.Project_Id);
-
   var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
-  html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>';
-  if (ganttProjName) html += ' <span style="display:inline-block;background:' + ganttProjColor + ';color:white;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;vertical-align:middle;">' + sanitize(ganttProjName) + '</span>';
-  html += ganttDepBadge(task) + '</div>';
+  
+  // Ajouter le nom du projet et du chef de projet AU-DESSUS du nom de la tâche
+  html += '<div style="background:' + color + ';color:white;padding:4px 8px;margin-bottom:4px;border-radius:4px;font-weight:700;">';
+  html += '<div style="font-size:13px;">' + projName + '</div>';
+  if (managerName) {
+    html += '<div style="font-size:11px;opacity:0.9;">' + managerName + '</div>';
+  }
+  html += '</div>';
+  
+  // Puis la tâche normale
+  html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>' + ganttDepBadge(task) + '</div>';
   html += '<div class="task-info">';
   if (task.Priority) html += '🔥 ' + priorityLabel(task.Priority);
-  if (assigneeNames) html += ' 👤 ' + sanitize(assigneeNames);
-  if (task.Due_Date) html += ' 📅 ' + formatDate(task.Due_Date);
+  html += '</div></td>';
+  return html;
+}
+
+function renderGanttTaskLabel(task) {
+  var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
+
+  var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
+  html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>' + ganttDepBadge(task) + '</div>';
+  html += '<div class="task-info">';
+  if (task.Priority) html += '🔥 ' + priorityLabel(task.Priority);
   html += '</div></td>';
   return html;
 }
@@ -5079,6 +5102,30 @@ function renderGanttView() {
       return da - db;
     });
   }
+  
+  // Regrouper les tâches par projet pour l'affichage Gantt
+  var tasksByProject = {};
+  tasksWithDates.forEach(function(task) {
+    var projId = task.Project_Id || '';
+    if (!tasksByProject[projId]) tasksByProject[projId] = [];
+    tasksByProject[projId].push(task);
+  });
+  
+  // Trier les projets par nom alphabétiquement
+  var sortedProjectIds = Object.keys(tasksByProject).sort(function(a, b) {
+    var projA = a ? projects.find(function(p) { return p.id == a; }) : null;
+    var projB = b ? projects.find(function(p) { return p.id == b; }) : null;
+    var nameA = (projA && projA.Name) ? projA.Name : '';
+    var nameB = (projB && projB.Name) ? projB.Name : '';
+    
+    // Mettre les projets avec nom en premier, puis les sans projet
+    if (nameA && !nameB) return -1;
+    if (!nameA && nameB) return 1;
+    if (!nameA && !nameB) return 0;
+    
+    return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+  });
+  
   document.getElementById('gantt-task-count').textContent = '(' + tasksWithDates.length + ' ' + (currentLang === 'fr' ? 'tâches' : 'tasks') + ')';
 
   var today = new Date();
@@ -5148,14 +5195,25 @@ function renderGanttView() {
       }
     }
 
-    // Task rows
-    for (var ti = 0; ti < tasksWithDates.length; ti++) {
-      var task = tasksWithDates[ti];
-      var barClass = getGanttBarClass(task);
-      var barCustomColor = getGanttBarColor(task);
-      var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
-      html += renderGanttTaskLabel(task);
+    // Task rows - grouped by project
+    var weeksColSpan = 1 + weeks.length;
+    for (var pi = 0; pi < sortedProjectIds.length; pi++) {
+      var projId = sortedProjectIds[pi];
+      var projTasks = tasksByProject[projId];
+      
+      // Render tasks for this project
+      for (var ti = 0; ti < projTasks.length; ti++) {
+        var task = projTasks[ti];
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
+        html += '<tr>';
+        // Première tâche du projet : afficher l'en-tête de projet
+        if (ti === 0) {
+          html += renderGanttProjectTaskLabel(projId, task);
+        } else {
+          html += renderGanttTaskLabel(task);
+        }
 
       var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
       var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5204,6 +5262,7 @@ function renderGanttView() {
           }
           html += '</tr>';
         }
+      }
       }
     }
 
@@ -5263,12 +5322,25 @@ function renderGanttView() {
     }
     html += '</tr></thead><tbody>';
 
-    for (var ti = 0; ti < tasksWithDates.length; ti++) {
-      var task = tasksWithDates[ti];
-      var barClass = getGanttBarClass(task);
-      var barCustomColor = getGanttBarColor(task);
-      var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>' + renderGanttTaskLabel(task);
+    // Task rows - grouped by project
+    var yearColSpan = 1 + totalMonths;
+    for (var pi = 0; pi < sortedProjectIds.length; pi++) {
+      var projId = sortedProjectIds[pi];
+      var projTasks = tasksByProject[projId];
+      
+      // Render tasks for this project
+      for (var ti = 0; ti < projTasks.length; ti++) {
+        var task = projTasks[ti];
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
+        html += '<tr>';
+        // Première tâche du projet : afficher l'en-tête de projet
+        if (ti === 0) {
+          html += renderGanttProjectTaskLabel(projId, task);
+        } else {
+          html += renderGanttTaskLabel(task);
+        }
 
       var yTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
       var yTEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5347,6 +5419,7 @@ function renderGanttView() {
           html += '</tr>';
         }
       }
+      }
     }
 
     html += '</tbody></table>';
@@ -5400,13 +5473,25 @@ function renderGanttView() {
     }
     html += '</tr></thead><tbody>';
 
-    for (var ti = 0; ti < tasksWithDates.length; ti++) {
-      var task = tasksWithDates[ti];
-      var barClass = getGanttBarClass(task);
-      var barCustomColor = getGanttBarColor(task);
-      var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-      html += '<tr>';
-      html += renderGanttTaskLabel(task);
+    // Task rows - grouped by project
+    var monthsColSpan = 1 + 12;
+    for (var pi = 0; pi < sortedProjectIds.length; pi++) {
+      var projId = sortedProjectIds[pi];
+      var projTasks = tasksByProject[projId];
+      
+      // Render tasks for this project
+      for (var ti = 0; ti < projTasks.length; ti++) {
+        var task = projTasks[ti];
+        var barClass = getGanttBarClass(task);
+        var barCustomColor = getGanttBarColor(task);
+        var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
+        html += '<tr>';
+        // Première tâche du projet : afficher l'en-tête de projet
+        if (ti === 0) {
+          html += renderGanttProjectTaskLabel(projId, task);
+        } else {
+          html += renderGanttTaskLabel(task);
+        }
 
       var mTStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
       var mTEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5459,6 +5544,7 @@ function renderGanttView() {
           }
           html += '</tr>';
         }
+      }
       }
     }
 
@@ -5537,13 +5623,25 @@ function renderGanttView() {
   }
   html += '</tr></thead><tbody>';
 
-  for (var ti = 0; ti < tasksWithDates.length; ti++) {
-    var task = tasksWithDates[ti];
-    var barClass = getGanttBarClass(task);
-    var barCustomColor = getGanttBarColor(task);
-    var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
-    html += '<tr>';
-    html += renderGanttTaskLabel(task);
+  // Task rows - grouped by project
+  var daysColSpan = 1 + days.length;
+  for (var pi = 0; pi < sortedProjectIds.length; pi++) {
+    var projId = sortedProjectIds[pi];
+    var projTasks = tasksByProject[projId];
+    
+    // Render tasks for this project
+    for (var ti = 0; ti < projTasks.length; ti++) {
+      var task = projTasks[ti];
+      var barClass = getGanttBarClass(task);
+      var barCustomColor = getGanttBarColor(task);
+      var barCustomStyle = barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '';
+      html += '<tr>';
+      // Première tâche du projet : afficher l'en-tête de projet
+      if (ti === 0) {
+        html += renderGanttProjectTaskLabel(projId, task);
+      } else {
+        html += renderGanttTaskLabel(task);
+      }
 
     var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
     var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -5636,6 +5734,7 @@ function renderGanttView() {
         }
         html += '</tr>';
       }
+    }
     }
   }
 
