@@ -1181,9 +1181,11 @@ function isOverdue(task) {
 }
 
 function getTaskSubtasks(taskId) {
-  // D1 : tri par échéance croissante (sans date en dernier), Order en départage
+  // WBS : ordre manuel (Order) prioritaire, puis échéance en départage
   return subtasks.filter(function(st) { return st.Parent_Task_Id === taskId; })
     .sort(function(a, b) {
+      var oa = a.Order || 0, ob = b.Order || 0;
+      if (oa !== ob) return oa - ob;
       var da = a.Due_Date || null;
       var db = b.Due_Date || null;
       if (da && db) {
@@ -1193,7 +1195,7 @@ function getTaskSubtasks(taskId) {
       } else if (db) {
         return 1;
       }
-      return (a.Order || 0) - (b.Order || 0);
+      return 0;
     });
 }
 
@@ -1848,7 +1850,8 @@ async function ensureTables() {
           { id: 'Tag', type: 'Text' },
           { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) },
           { id: 'Estimated_Hours', type: 'Numeric' },
-          { id: 'Created_At', type: 'Date' }
+          { id: 'Created_At', type: 'Date' },
+          { id: 'Order', type: 'Int' }
         ]]
       ]);
     }
@@ -2203,6 +2206,11 @@ async function ensureTables() {
             ['AddColumn', TASKS_TABLE, 'Tag', { type: 'Text' }]
           ]);
         }
+        if (existingCols.indexOf('Order') === -1) {
+          await grist.docApi.applyUserActions([
+            ['AddColumn', TASKS_TABLE, 'Order', { type: 'Int' }]
+          ]);
+        }
         // RACI columns
         var raciCols = ['Accountable', 'Consulted', 'Informed'];
         var raciActions = [];
@@ -2351,6 +2359,7 @@ async function loadAllData() {
         task.Informed = taskData.Informed ? taskData.Informed[i] || '' : '';
         task.Extension_Date = taskData.Extension_Date ? taskData.Extension_Date[i] : null;
         task.Auto_Extend = taskData.Auto_Extend ? !!taskData.Auto_Extend[i] : false;
+        task.Order = taskData.Order ? (taskData.Order[i] || 0) : 0;
 
         tasks.push(task);
       }
@@ -4692,8 +4701,10 @@ function renderProjectListView() {
       return task.Project_Id === project.id;
     });
     
-    // Trier les tâches par priorité puis par date d'échéance
+    // WBS : ordre manuel (Order) prioritaire, puis priorité et échéance
     projectTasks.sort(function(a, b) {
+      var oa = a.Order || 0, ob = b.Order || 0;
+      if (oa !== ob) return oa - ob;
       var priorityOrder = { high: 0, medium: 1, low: 2 };
       var pa = priorityOrder[a.Priority] !== undefined ? priorityOrder[a.Priority] : 3;
       var pb = priorityOrder[b.Priority] !== undefined ? priorityOrder[b.Priority] : 3;
@@ -4703,7 +4714,7 @@ function renderProjectListView() {
     
     // Ligne du projet
     var isProjectExpanded = expandedProjectListProjects[project.id] !== false;
-    html += '<tr class="project-row" style="background:#f8fafc;border-left:4px solid ' + projectColor + ';" data-project-id="' + project.id + '">';
+    html += '<tr class="project-row" style="background:#f8fafc;border-left:4px solid ' + projectColor + ';" data-project-id="' + project.id + '" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsProjectRowDrop(event, ' + project.id + ')">';
     html += '<td style="text-align:center;"><button class="toggle-btn" onclick="toggleProjectListProject(' + project.id + ', event)" title="' + (currentLang === 'fr' ? 'Déplier/Replier les tâches' : 'Expand/Collapse tasks') + '">' + (isProjectExpanded ? '-' : '+') + '</button></td>';
     html += '<td style="font-weight:700;padding-left:12px;">' + sanitize(project.Name) + (project.Description ? '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + sanitize(project.Description) + '</div>' : '') + '</td>';
     html += '<td><span class="status-badge">● ' + (currentLang === 'fr' ? (project.Status === 'active' ? 'Actif' : project.Status === 'completed' ? 'Terminé' : project.Status === 'archived' ? 'Archivé' : project.Status) : (project.Status === 'active' ? 'Active' : project.Status === 'completed' ? 'Completed' : project.Status === 'archived' ? 'Archived' : project.Status)) + '</span></td>';
@@ -4724,7 +4735,7 @@ function renderProjectListView() {
         var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
         var assigneeDisplay = task.Assignee ? task.Assignee.split(',').map(function(a) { return getUserDisplayName(a.trim()); }).join(', ') : '';
         
-        html += '<tr class="project-task-row" data-project-id="' + project.id + '" style="padding-left:30px;background:transparent;' + displayStyle + '" onclick="openEditTaskModal(' + task.id + ')">';
+        html += '<tr class="project-task-row" data-project-id="' + project.id + '" style="padding-left:30px;background:transparent;' + displayStyle + '" draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')" onclick="openEditTaskModal(' + task.id + ')">';
         html += '<td></td>'; // Cellule vide pour la colonne du bouton
         html += '<td><div style="display:flex;align-items:center;gap:8px;"><span style="width:16px;flex-shrink:0;">└</span><div style="font-weight:600;">' + sanitize(task.Title) + '</div></div></td>';
         html += '<td><span class="status-badge ' + statusClass + '">● ' + statusLabel(task.Status) + '</span></td>';
@@ -4822,6 +4833,154 @@ async function toggleSubtaskFromTable(subtaskId, completed) {
 }
 
 // =============================================================================
+// WBS : réorganisation projet -> tâches -> sous-tâches (glisser-déposer)
+// =============================================================================
+var wbsDrag = null;
+
+function wbsClearDropHint(el) {
+  if (!el) return;
+  el.classList.remove('wbs-drop-target');
+  el.classList.remove('wbs-drop-before');
+  el.classList.remove('wbs-drop-after');
+  el.removeAttribute('data-wbs-pos');
+}
+
+function wbsTaskDragStart(e, taskId) {
+  wbsDrag = { type: 'task', id: taskId };
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(taskId)); } catch (err) {}
+}
+
+function wbsSubtaskDragStart(e, subtaskId) {
+  wbsDrag = { type: 'subtask', id: subtaskId };
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(subtaskId)); } catch (err) {}
+}
+
+function wbsRowDragOver(e) {
+  if (!wbsDrag) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  var tr = e.currentTarget;
+  var rect = tr.getBoundingClientRect();
+  var before = e.clientY < rect.top + rect.height / 2;
+  tr.classList.add('wbs-drop-target');
+  tr.classList.toggle('wbs-drop-before', before);
+  tr.classList.toggle('wbs-drop-after', !before);
+  tr.setAttribute('data-wbs-pos', before ? 'before' : 'after');
+}
+
+function wbsRowDragLeave(e) {
+  wbsClearDropHint(e.currentTarget);
+}
+
+function wbsProjectTasksSorted(projectId) {
+  return tasks.filter(function (tk) { return tk.Project_Id === projectId; })
+    .sort(function (a, b) {
+      var oa = a.Order || 0, ob = b.Order || 0;
+      if (oa !== ob) return oa - ob;
+      return a.id - b.id;
+    });
+}
+
+async function wbsPersistTaskOrder(taskList) {
+  var actions = [];
+  for (var i = 0; i < taskList.length; i++) {
+    if ((taskList[i].Order || 0) !== i + 1) {
+      actions.push(['UpdateRecord', TASKS_TABLE, taskList[i].id, { Order: i + 1 }]);
+      taskList[i].Order = i + 1;
+    }
+  }
+  if (actions.length > 0) {
+    try { await grist.docApi.applyUserActions(actions); }
+    catch (e) { console.error('wbsPersistTaskOrder:', e); showToast('Error', 'error'); }
+  }
+}
+
+async function wbsMoveTask(taskId, targetProjectId, targetIndex) {
+  var task = tasks.find(function (tk) { return tk.id === taskId; });
+  if (!task) return;
+  if (task.Project_Id !== targetProjectId) {
+    try {
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord', TASKS_TABLE, taskId, { Project_Id: targetProjectId }]
+      ]);
+    } catch (e) {
+      console.error('wbsMoveTask:', e);
+      showToast('Error', 'error');
+      return;
+    }
+    task.Project_Id = targetProjectId;
+  }
+  var list = wbsProjectTasksSorted(targetProjectId).filter(function (tk) { return tk.id !== taskId; });
+  var idx = Math.max(0, Math.min(targetIndex, list.length));
+  list.splice(idx, 0, task);
+  await wbsPersistTaskOrder(list);
+}
+
+async function wbsTaskRowDrop(e, targetTaskId) {
+  e.preventDefault();
+  e.stopPropagation();
+  var pos = e.currentTarget.getAttribute('data-wbs-pos') || 'before';
+  wbsClearDropHint(e.currentTarget);
+  var drag = wbsDrag;
+  wbsDrag = null;
+  if (!drag || drag.type !== 'task' || drag.id === targetTaskId) return;
+  var target = tasks.find(function (tk) { return tk.id === targetTaskId; });
+  if (!target) return;
+  var projectTasks = wbsProjectTasksSorted(target.Project_Id);
+  var targetIdx = projectTasks.indexOf(target);
+  if (targetIdx === -1) return;
+  await wbsMoveTask(drag.id, target.Project_Id, pos === 'before' ? targetIdx : targetIdx + 1);
+  showToast(t('taskMoved'), 'success');
+  refreshAllViews();
+}
+
+async function wbsProjectRowDrop(e, projectId) {
+  e.preventDefault();
+  e.stopPropagation();
+  wbsClearDropHint(e.currentTarget);
+  var drag = wbsDrag;
+  wbsDrag = null;
+  if (!drag || drag.type !== 'task') return;
+  var task = tasks.find(function (tk) { return tk.id === drag.id; });
+  if (!task || task.Project_Id === projectId) return;
+  await wbsMoveTask(drag.id, projectId, wbsProjectTasksSorted(projectId).length);
+  showToast(t('taskMoved'), 'success');
+  refreshAllViews();
+}
+
+async function wbsSubtaskRowDrop(e, targetSubtaskId) {
+  e.preventDefault();
+  e.stopPropagation();
+  var pos = e.currentTarget.getAttribute('data-wbs-pos') || 'before';
+  wbsClearDropHint(e.currentTarget);
+  var drag = wbsDrag;
+  wbsDrag = null;
+  if (!drag || drag.type !== 'subtask' || drag.id === targetSubtaskId) return;
+  var target = subtasks.find(function (st) { return st.id === targetSubtaskId; });
+  var dragged = subtasks.find(function (st) { return st.id === drag.id; });
+  if (!target || !dragged || target.Parent_Task_Id !== dragged.Parent_Task_Id) return;
+  var list = getTaskSubtasks(target.Parent_Task_Id).filter(function (st) { return st.id !== drag.id; });
+  var targetIdx = list.indexOf(target);
+  if (targetIdx === -1) return;
+  list.splice(pos === 'before' ? targetIdx : targetIdx + 1, 0, dragged);
+  var actions = [];
+  for (var i = 0; i < list.length; i++) {
+    if ((list[i].Order || 0) !== i + 1) {
+      actions.push(['UpdateRecord', SUBTASKS_TABLE, list[i].id, { Order: i + 1 }]);
+      list[i].Order = i + 1;
+    }
+  }
+  if (actions.length > 0) {
+    try { await grist.docApi.applyUserActions(actions); }
+    catch (err) { console.error('wbsSubtaskRowDrop:', err); showToast('Error', 'error'); return; }
+    showToast(t('taskMoved'), 'success');
+  }
+  refreshAllViews();
+}
+
+// =============================================================================
 // GANTT VIEW
 // =============================================================================
 
@@ -4855,7 +5014,7 @@ function getGanttSubtasks(taskId) {
 // Construit la <td> de libellé d'une sous-tâche (indentée, allégée, cliquable)
 function renderGanttSubtaskLabelCell(st, parentTaskId) {
   var completedClass = st.Completed ? ' style="text-decoration:line-through;opacity:0.5;"' : '';
-  var html = '<td class="gantt-task-label gantt-subtask-cell gantt-clickable-label" onclick="openEditTaskModal(' + parentTaskId + ')"' + completedClass + '>';
+  var html = '<td class="gantt-task-label gantt-subtask-cell gantt-clickable-label" draggable="true" ondragstart="wbsSubtaskDragStart(event, ' + st.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsSubtaskRowDrop(event, ' + st.id + ')" onclick="openEditTaskModal(' + parentTaskId + ')"' + completedClass + '>';
   html += '<span style="font-size:10px;color:#94a3b8;margin-right:4px;">' + (isMilestone(st) ? '◆' : '↳') + '</span>';
   html += '<span style="font-size:11px;' + (isMilestone(st) ? 'font-weight:700;' : '') + '">' + sanitize(st.Title) + '</span>';
   // A1 : indicateur de dépendance entre sous-tâches
@@ -4969,7 +5128,7 @@ function renderGanttProjectTaskLabel(projectId, task) {
   
   // Retourne le HTML pour l'en-tête de projet + tâche combinés
   var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
-  var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
+  var html = '<td class="gantt-task-label gantt-clickable-label" draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')" onclick="openEditTaskModal(' + task.id + ')">';
   
   // Ajouter le nom du projet et du chef de projet AU-DESSUS du nom de la tâche
   html += '<div style="background:' + color + ';color:white;padding:4px 8px;margin-bottom:4px;border-radius:4px;font-weight:700;">';
@@ -4990,7 +5149,7 @@ function renderGanttProjectTaskLabel(projectId, task) {
 function renderGanttTaskLabel(task) {
   var dotClass = task.Priority === 'high' ? 'dot-high' : (task.Priority === 'medium' ? 'dot-medium' : 'dot-low');
 
-  var html = '<td class="gantt-task-label gantt-clickable-label" onclick="openEditTaskModal(' + task.id + ')">';
+  var html = '<td class="gantt-task-label gantt-clickable-label" draggable="true" ondragstart="wbsTaskDragStart(event, ' + task.id + ')" ondragover="wbsRowDragOver(event)" ondragleave="wbsRowDragLeave(event)" ondrop="wbsTaskRowDrop(event, ' + task.id + ')" onclick="openEditTaskModal(' + task.id + ')">';
   html += '<div class="task-name">' + ganttChevron(task) + '<span class="priority-dot ' + dotClass + '"></span> <strong>' + sanitize(task.Title) + '</strong>' + ganttDepBadge(task) + '</div>';
   html += '<div class="task-info">';
   if (task.Priority) html += '🔥 ' + priorityLabel(task.Priority);
@@ -5101,14 +5260,37 @@ function renderGanttView() {
       var da = a.Due_Date || a.Start_Date || 0, db = b.Due_Date || b.Start_Date || 0;
       return da - db;
     });
+  } else {
+    // WBS : projet -> ordre manuel (Order)
+    var projNameOf = function(pid) {
+      var proj = projects.find(function(pr) { return pr.id === pid; });
+      return proj ? (proj.Name || '') : '';
+    };
+    tasksWithDates.sort(function(a, b) {
+      var pn = projNameOf(a.Project_Id), pm = projNameOf(b.Project_Id);
+      if (pn !== pm) return pn.localeCompare(pm);
+      var oa = a.Order || 0, ob = b.Order || 0;
+      if (oa !== ob) return oa - ob;
+      return a.id - b.id;
+    });
   }
   
   // Regrouper les tâches par projet pour l'affichage Gantt
+  // Tri intra-projet : ordre manuel (Order) prioritaire, puis date en départage
   var tasksByProject = {};
   tasksWithDates.forEach(function(task) {
     var projId = task.Project_Id || '';
     if (!tasksByProject[projId]) tasksByProject[projId] = [];
     tasksByProject[projId].push(task);
+  });
+  Object.keys(tasksByProject).forEach(function(projId) {
+    tasksByProject[projId].sort(function(a, b) {
+      var oa = a.Order || 0, ob = b.Order || 0;
+      if (oa !== ob) return oa - ob;
+      var da = a.Due_Date || a.Start_Date || 0;
+      var db = b.Due_Date || b.Start_Date || 0;
+      return da - db;
+    });
   });
   
   // Trier les projets par nom alphabétiquement
@@ -7375,6 +7557,9 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  // WBS : nouvelle tâche en fin de liste de son projet
+  var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
+  record.Order = _projTasksForOrder.length + 1;
   record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
   try {
@@ -7439,6 +7624,9 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  // WBS : nouvelle tâche en fin de liste de son projet
+  var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
+  record.Order = _projTasksForOrder.length + 1;
   record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
 
@@ -9225,6 +9413,9 @@ async function createTask() {
   setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  // WBS : nouvelle tâche en fin de liste de son projet
+  var _projTasksForOrder = wbsProjectTasksSorted(projectId || null);
+  record.Order = _projTasksForOrder.length + 1;
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
   record.Auto_Extend = true;
 
