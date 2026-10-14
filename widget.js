@@ -6381,9 +6381,10 @@ function renderPlanningView() {
     var item = sortedUsersWithGroups[ui];
     
     // Render group header row
+    // TEST : Gris plus foncé pour les groupes (ancien: #f1f5f9)
     if (item.type === 'header') {
       var groupName = item.groupName;
-      html += '<tr class="planning-group-header" style="background:#f1f5f9;">';
+      html += '<tr class="planning-group-header" style="background:#e2e8f0;">';
       html += '<td class="planning-user-label" style="vertical-align:middle;font-weight:bold;border-bottom:1px solid #e2e8f0;">' + sanitize(groupName) + '</td>';
       for (var hgi = 0; hgi < headers.length; hgi++) {
         html += '<td class="gantt-cell planning-cell" style="padding:0;border-top:1px solid #e2e8f0;"></td>';
