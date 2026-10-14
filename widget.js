@@ -6426,8 +6426,8 @@ function renderPlanningView() {
           return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
         });
         
-        // Calculate height to contain stacked tasks (24px per task)
-        var cellMinHeight = Math.max(24, overlappingTasks.length * 24);
+        // Calculate height to contain stacked tasks (28 pour 1 tache puis 24px par tache)
+        var cellMinHeight = Math.max(28, (overlappingTasks.length * 24)+4 );
         html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px; ' + (h2.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + ';" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
         // Render each overlapping task as a bar in this cell
         var barIndex = 0;
@@ -6451,8 +6451,8 @@ function renderPlanningView() {
           var widthPercent = (durationInCell / totalDuration * 100);
           
           if (widthPercent > 2) {
-            // Stack bars vertically to avoid overlap
-            var topOffset = barIndex * 24; // 24px offset for each additional task (matches bar height)
+            // Stack bars vertically to avoid overlap + 2px margin on top
+            var topOffset = barIndex * 24 + 2; // 24px offset for each additional task + 2px top margin
             var tooltip = sanitize(task.Title || '') + '\n' +
                           (currentLang === 'fr' ? 'Projet' : 'Project') + ': ' + sanitize((getProjectName(task.Project_Id)) || '') + '\n' +
                           (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(statusLabel(task.Status) || '') + '\n' +
