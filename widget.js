@@ -6159,7 +6159,9 @@ function renderPlanningView() {
     ? ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
     : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-  var html = '<div class="gantt-container planning-container"><table class="gantt-table planning-table">';
+  // SOLUTION 1 : Désactiver l'ascenseur du conteneur pour éviter les conflits avec sticky
+  // Pour revenir en arrière : supprimer le style inline ci-dessous
+  var html = '<div class="gantt-container planning-container" style="overflow:visible !important; max-height:none !important;"><table class="gantt-table planning-table">';
 
   // Group tasks by assignee - each task appears under each assigned person
   // Use unique identifier (email) as key to avoid conflicts with same display names
@@ -6189,30 +6191,86 @@ function renderPlanningView() {
     });
   });
 
-  var sortedUsers = Object.keys(tasksByUser).sort();
+  // Group users by their group
+  var usersByGroup = {};
+  var allGroups = [];
+  var userGroupMap = {};
+  
+  Object.keys(tasksByUser).forEach(function(userId) {
+    var user = findUserByIdent(userId);
+    var groupName = user ? (user.Group_Name || '').trim() : '';
+    
+    if (!groupName) groupName = currentLang === 'fr' ? 'Sans Groupe' : 'No Group';
+    
+    userGroupMap[userId] = groupName;
+    
+    if (!usersByGroup[groupName]) usersByGroup[groupName] = [];
+    usersByGroup[groupName].push(userId);
+    if (allGroups.indexOf(groupName) === -1) allGroups.push(groupName);
+  });
 
-  // Si un filtre par personne ou rôle est actif, ne montrer que les utilisateurs correspondants
+  // Sort groups - special groups ("Non assigné", "Unassigned", "Sans Groupe", "No Group") at the end
+  allGroups.sort(function(a, b) {
+    var aIsSpecial = a === 'Non assigné' || a === 'Unassigned' || a === 'Sans Groupe' || a === 'No Group';
+    var bIsSpecial = b === 'Non assigné' || b === 'Unassigned' || b === 'Sans Groupe' || b === 'No Group';
+    
+    if (aIsSpecial && !bIsSpecial) return 1;
+    if (!aIsSpecial && bIsSpecial) return -1;
+    return a.localeCompare(b);
+  });
+
+  // Create a list of users with group headers
+  var sortedUsersWithGroups = [];
+  allGroups.forEach(function(groupName) {
+    // Add group header
+    sortedUsersWithGroups.push({ type: 'header', groupName: groupName });
+    
+    // Add users in this group, sorted
+    usersByGroup[groupName].sort().forEach(function(userId) {
+      sortedUsersWithGroups.push({ type: 'user', userId: userId });
+    });
+  });
+
+  // Apply filters if active
   if (currentFilterAssignee) {
     var filterIdentSet = personIdentSet(currentFilterAssignee);
-    sortedUsers = sortedUsers.filter(function(userId) {
-      // Vérifier si cet identifiant ou l'utilisateur correspondant match le filtre
-      if (filterIdentSet[String(userId).toLowerCase().trim()]) return true;
-      var u = findUserByIdent(userId);
-      if (u) {
-        if (u.Email && filterIdentSet[String(u.Email).toLowerCase().trim()]) return true;
-        if (u.Name && filterIdentSet[String(u.Name).toLowerCase().trim()]) return true;
+    // Filter the sortedUsersWithGroups to only include matching users
+    var filteredList = [];
+    sortedUsersWithGroups.forEach(function(item) {
+      if (item.type === 'header') {
+        filteredList.push(item);
+      } else if (item.type === 'user') {
+        var userId = item.userId;
+        if (filterIdentSet[String(userId).toLowerCase().trim()]) {
+          filteredList.push(item);
+        } else {
+          var u = findUserByIdent(userId);
+          if (u) {
+            if (u.Email && filterIdentSet[String(u.Email).toLowerCase().trim()]) {
+              filteredList.push(item);
+            } else if (u.Name && filterIdentSet[String(u.Name).toLowerCase().trim()]) {
+              filteredList.push(item);
+            }
+          }
+        }
       }
-      return false;
     });
+    sortedUsersWithGroups = filteredList;
   } else if (currentFilterRole) {
-    // Filtre par rôle : ne montrer que les utilisateurs de ce rôle
-    sortedUsers = sortedUsers.filter(function(userId) {
-      var u = findUserByIdent(userId);
-      if (u) {
-        return userMatchesRole(u, currentFilterRole);
+    // Filter by role: only show users with this role
+    var filteredList = [];
+    sortedUsersWithGroups.forEach(function(item) {
+      if (item.type === 'header') {
+        filteredList.push(item);
+      } else if (item.type === 'user') {
+        var userId = item.userId;
+        var u = findUserByIdent(userId);
+        if (u && userMatchesRole(u, currentFilterRole)) {
+          filteredList.push(item);
+        }
       }
-      return false;
     });
+    sortedUsersWithGroups = filteredList;
   }
 
   // Determine date range based on mode
@@ -6305,7 +6363,7 @@ function renderPlanningView() {
   }
 
   // Generate header row
-  html += '<thead><tr><th class="gantt-task-label" style="text-align:left;">' + t('colAssignee') + '</th>';
+  html += '<thead><tr><th class="gantt-task-label" style="text-align:left;background:white;">' + t('colAssignee') + '</th>';
   for (var hi = 0; hi < headers.length; hi++) {
     var h = headers[hi];
     var todayId = h.isCurrent ? ' id="planning-today-col"' : '';
@@ -6318,109 +6376,126 @@ function renderPlanningView() {
   }
   html += '</tr></thead><tbody>';
 
-  // Render rows for each user - ONE ROW PER USER with all tasks on same line
-  for (var ui = 0; ui < sortedUsers.length; ui++) {
-    var user = sortedUsers[ui];
-    var userTasks = tasksByUser[user];
-    var displayName = userDisplayNames[user] || user;
-    var isExpanded = !!expandedPlanningUsers[user];
-
-    html += '<tr class="planning-row" data-user="' + sanitize(user) + '" style="' + (isExpanded ? '' : 'display:none;') + '">';
+  // Render rows for each user with group headers - ONE ROW PER USER with all tasks on same line
+  for (var ui = 0; ui < sortedUsersWithGroups.length; ui++) {
+    var item = sortedUsersWithGroups[ui];
     
-    // User label column
-    html += '<td class="gantt-task-label planning-user-label" style="vertical-align:top;">';
-    html += '<span class="planning-user-expand" onclick="togglePlanningUser(\'' + sanitize(user) + '\')" style="cursor:pointer;margin-right:6px;display:inline-block;width:16px;text-align:center;">';
-    html += isExpanded ? '▼' : '▶';
-    html += '</span>';
-    html += '<strong style="color:' + getUserColor(user) + ';">' + sanitize(displayName) + '</strong>';
-    html += '</td>';
-
-    // For each time period, render all tasks for this user
-    for (var hi2 = 0; hi2 < headers.length; hi2++) {
-      var h2 = headers[hi2];
-      var cellStart = h2.start;
-      var cellEnd = h2.end;
-      
-      // Find all tasks for this user that overlap with this period
-      var overlappingTasks = userTasks.filter(function(task) {
-        var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
-        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
-        if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
-        if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
-        if (tStart) tStart.setUTCHours(0, 0, 0, 0);
-        if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
-        
-        return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
-      });
-      
-      // Calculate height to contain stacked tasks (24px per task)
-      var cellMinHeight = Math.max(24, overlappingTasks.length * 24);
-      html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px; ' + (h2.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + ';" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
-      // Render each overlapping task as a bar in this cell
-      var barIndex = 0;
-      overlappingTasks.forEach(function(task) {
-        var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
-        var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
-        if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
-        if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
-        if (tStart) tStart.setUTCHours(0, 0, 0, 0);
-        if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
-        
-        var barClass = getGanttBarClass(task);
-        var barCustomColor = getGanttBarColor(task);
-        
-        // Calculate position and width
-        var totalDuration = cellEnd - cellStart;
-        var taskInCellStart = Math.max(tStart.getTime(), cellStart.getTime());
-        var taskInCellEnd = Math.min(tEnd.getTime(), cellEnd.getTime());
-        var durationInCell = taskInCellEnd - taskInCellStart;
-        var startPercent = ((taskInCellStart - cellStart.getTime()) / totalDuration * 100);
-        var widthPercent = (durationInCell / totalDuration * 100);
-        
-        if (widthPercent > 2) {
-          // Stack bars vertically to avoid overlap
-          var topOffset = barIndex * 24; // 24px offset for each additional task (matches bar height)
-          var tooltip = sanitize(task.Title || '') + '\n' +
-                        (currentLang === 'fr' ? 'Projet' : 'Project') + ': ' + sanitize((getProjectName(task.Project_Id)) || '') + '\n' +
-                        (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(statusLabel(task.Status) || '') + '\n' +
-                        (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(priorityLabel(task.Priority) || '');
-          
-          // Duration-based styling for Planning view
-          var durationClass = '';
-          if (task.Duration === 'Matin') {
-            durationClass = 'duration-morning';
-          } else if (task.Duration === 'Après-midi') {
-            durationClass = 'duration-afternoon';
-          }
-          
-          var onClickHandler = 'event.stopPropagation();openEditTaskModal(' + task.id + ')';
-          
-          if (durationClass) {
-            // For Matin/Après-midi: wrapper with white background + bar with clip-path
-            html += '<div class="gantt-bar-wrapper" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
-            html += '<div class="gantt-bar ' + barClass + ' ' + durationClass + '" style="position:absolute;top:0;left:0;right:0;bottom:0;' + (barCustomColor ? 'background:' + barCustomColor + ';' : '') + '">';
-            if (widthPercent > 30) {
-              html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white;">' + sanitize(task.Title || '') + '</span>';
-            }
-            html += '</div></div>';
-          } else {
-            // For Journée: normal bar
-            html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
-            if (widthPercent > 30) {
-              html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
-            }
-            html += '</div>';
-          }
-          barIndex++;
-        }
-      });
-      
-      html += '</td>';
+    // Render group header row
+    if (item.type === 'header') {
+      var groupName = item.groupName;
+      html += '<tr class="planning-group-header" style="background:#f1f5f9;">';
+      html += '<td class="planning-user-label" style="vertical-align:middle;font-weight:bold;border-bottom:1px solid #e2e8f0;">' + sanitize(groupName) + '</td>';
+      for (var hgi = 0; hgi < headers.length; hgi++) {
+        html += '<td class="gantt-cell planning-cell" style="padding:0;border-top:1px solid #e2e8f0;"></td>';
+      }
+      html += '</tr>';
     }
-    html += '</tr>';
+    // Render user row
+    else if (item.type === 'user') {
+      var user = item.userId;
+      var userTasks = tasksByUser[user];
+      var displayName = userDisplayNames[user] || user;
+      var isExpanded = !!expandedPlanningUsers[user];
+
+      html += '<tr class="planning-row" data-user="' + sanitize(user) + '" style="' + (isExpanded ? '' : 'display:none;') + '">';
+      
+      // User label column
+      html += '<td class="gantt-task-label planning-user-label" style="vertical-align:top;background:white;transform:translateZ(0);white-space:nowrap;">';
+      html += '<span class="planning-user-expand" onclick="togglePlanningUser(\'' + sanitize(user) + '\')" style="cursor:pointer;margin-right:6px;display:inline-block;width:16px;text-align:center;">';
+      html += isExpanded ? '▼' : '▶';
+      html += '</span>';
+      html += '<strong style="color:' + getUserColor(user) + ';">' + sanitize(displayName) + '</strong>';
+      html += '</td>';
+
+      // For each time period, render all tasks for this user
+      for (var hi2 = 0; hi2 < headers.length; hi2++) {
+        var h2 = headers[hi2];
+        var cellStart = h2.start;
+        var cellEnd = h2.end;
+        
+        // Find all tasks for this user that overlap with this period
+        var overlappingTasks = userTasks.filter(function(task) {
+          var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
+          var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
+          if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
+          if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
+          if (tStart) tStart.setUTCHours(0, 0, 0, 0);
+          if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
+          
+          return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
+        });
+        
+        // Calculate height to contain stacked tasks (24px per task)
+        var cellMinHeight = Math.max(24, overlappingTasks.length * 24);
+        html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px; ' + (h2.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + ';" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
+        // Render each overlapping task as a bar in this cell
+        var barIndex = 0;
+        overlappingTasks.forEach(function(task) {
+          var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
+          var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
+          if (!tStart && tEnd) tStart = new Date(tEnd.getTime());
+          if (!tEnd && tStart) tEnd = new Date(tStart.getTime());
+          if (tStart) tStart.setUTCHours(0, 0, 0, 0);
+          if (tEnd) tEnd.setUTCHours(23, 59, 59, 999);
+          
+          var barClass = getGanttBarClass(task);
+          var barCustomColor = getGanttBarColor(task);
+          
+          // Calculate position and width
+          var totalDuration = cellEnd - cellStart;
+          var taskInCellStart = Math.max(tStart.getTime(), cellStart.getTime());
+          var taskInCellEnd = Math.min(tEnd.getTime(), cellEnd.getTime());
+          var durationInCell = taskInCellEnd - taskInCellStart;
+          var startPercent = ((taskInCellStart - cellStart.getTime()) / totalDuration * 100);
+          var widthPercent = (durationInCell / totalDuration * 100);
+          
+          if (widthPercent > 2) {
+            // Stack bars vertically to avoid overlap
+            var topOffset = barIndex * 24; // 24px offset for each additional task (matches bar height)
+            var tooltip = sanitize(task.Title || '') + '\n' +
+                          (currentLang === 'fr' ? 'Projet' : 'Project') + ': ' + sanitize((getProjectName(task.Project_Id)) || '') + '\n' +
+                          (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(statusLabel(task.Status) || '') + '\n' +
+                          (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(priorityLabel(task.Priority) || '');
+            
+            // Duration-based styling for Planning view
+            var durationClass = '';
+            if (task.Duration === 'Matin') {
+              durationClass = 'duration-morning';
+            } else if (task.Duration === 'Après-midi') {
+              durationClass = 'duration-afternoon';
+            }
+            
+            var onClickHandler = 'event.stopPropagation();openEditTaskModal(' + task.id + ')';
+            
+            if (durationClass) {
+              // For Matin/Après-midi: wrapper with white background + bar with clip-path
+              html += '<div class="gantt-bar-wrapper" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
+              html += '<div class="gantt-bar ' + barClass + ' ' + durationClass + '" style="position:absolute;top:0;left:0;right:0;bottom:0;' + (barCustomColor ? 'background:' + barCustomColor + ';' : '') + '">';
+              if (widthPercent > 30) {
+                html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white;">' + sanitize(task.Title || '') + '</span>';
+              }
+              html += '</div></div>';
+            } else {
+              // For Journée: normal bar
+              html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
+              if (widthPercent > 30) {
+                html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
+              }
+              html += '</div>';
+            }
+            barIndex++;
+          }
+        });
+        
+        html += '</td>';
+      }
+      html += '</tr>';
+    }
   }
 
   html += '</tbody></table></div>';
+  
+  var container = document.getElementById('planning-view');
   
   var container = document.getElementById('planning-view');
   if (container) {
