@@ -734,7 +734,7 @@ function setLang(lang) {
 }
 
 // =============================================================================
-// STATE
+// ÉTAT
 // =============================================================================
 
 var tasks = [];
@@ -751,18 +751,18 @@ var categories = [];
 var tags = [];
 var projects = [];
 var projectManagers = [];
-var currentProjectId = null; // null = all projects
+var currentProjectId = null; // null = tous les projets
 var currentFilterRole = null;
-var currentFilterAssignee = null; // user Name
+var currentFilterAssignee = null; // nom d'utilisateur
 var currentFilterCategory = null;
 var currentFilterTag = null;
 var currentFilterGroup = null;
 var mineOnly = false; // "Mes projets" : projets créés par moi OU où je suis assigné
-var activeTimers = {}; // taskId -> startTime (for running timers)
+var activeTimers = {}; // taskId -> heure de début (minuteurs en cours)
 var kanbanGroupBy = 'status'; // 'status' | 'priority' | 'project'
 var kanbanSort = 'manual'; // 'manual' | 'alpha' | 'alpha-desc' | 'due'
 var expandedKanbanCards = {}; // taskId -> true quand la tuile est dépliée (A2)
-var collapsedKanbanCols = {}; // col.key -> true when collapsed
+var collapsedKanbanCols = {}; // col.key -> true quand repliée
 var expandedProjectListProjects = {}; // projectId -> true quand déplié
 var allProjectListTasksExpanded = false; // état global pour tout déplier/replier (replié par défaut)
 
@@ -820,7 +820,7 @@ var automationRules = [];
 var notifyConcernedEnabled = true; // notifier les utilisateurs concernés à la création/modification
 var pmNotifications = [];
 
-// PM_Settings helpers
+// Aides PM_Settings
 var _settingsCache = {};
 
 async function loadSettings() {
@@ -832,7 +832,7 @@ async function loadSettings() {
         _settingsCache[data.Key[i]] = { id: data.id[i], value: data.Value[i] };
       }
     }
-    // Apply loaded settings
+    // Appliquer les paramètres chargés
     if (_settingsCache.kanban_statuses) {
       try { customKanbanStatuses = JSON.parse(_settingsCache.kanban_statuses.value); } catch (e) {}
     }
@@ -877,7 +877,7 @@ var ganttCustomEnd = '';   // mode 'custom' : date de fin (YYYY-MM-DD)
 var ganttYear = new Date().getFullYear();
 var ganttMonth = new Date().getMonth();
 var expandedGanttTasks = {}; // taskId -> true quand les sous-tâches sont visibles dans le Gantt
-// Planning view state
+// État de la vue Planning
 var planningMode = 'days';
 var planningYear = new Date().getFullYear();
 var planningMonth = new Date().getMonth();
@@ -931,9 +931,9 @@ function initPlanningUsersExpanded() {
 }
 var calendarYear = new Date().getFullYear();
 var calendarMonth = new Date().getMonth();
-var calendarMode = 'month'; // 'month', 'week' or 'day'
-var calendarWeekOffset = 0; // Offset in weeks from current week
-var calendarDayOffset = 0; // Offset in days from today (day view)
+var calendarMode = 'month'; // 'month', 'week' ou 'day'
+var calendarWeekOffset = 0; // Décalage en semaines par rapport à la semaine courante
+var calendarDayOffset = 0; // Décalage en jours par rapport à aujourd'hui (vue jour)
 
 var TASKS_TABLE = 'PM_Tasks';
 var USERS_TABLE = 'PM_Users';
@@ -957,16 +957,16 @@ var ATTACHMENTS_TABLE = 'PM_Attachments';
 var attachments = [];
 var activityLog = [];
 
-// Default table names — used to detect remapping: if a table var differs from
-// its default it means the user mapped it to an existing table, so we must NOT
-// auto-create the default PM_* table.
+// Noms de tables par défaut — utilisés pour détecter le remapping : si une variable
+// de table diffère de sa valeur par défaut, cela signifie que l'utilisateur l'a
+// mappée à une table existante ; il ne faut donc PAS créer automatiquement la table PM_* par défaut.
 var DEFAULT_TASKS_TABLE    = 'PM_Tasks';
 var DEFAULT_USERS_TABLE    = 'PM_Users';
 var DEFAULT_PROJECTS_TABLE = 'PM_Projects';
 var DEFAULT_CATEGORIES_TABLE = 'PM_Categories';
 var DEFAULT_TAGS_TABLE     = 'PM_Tags';
 
-// Configuration mapping object
+// Objet de configuration du mapping
 var columnMapping = {
   tasks: {
     title: 'Title',
@@ -1015,7 +1015,7 @@ var isEditor = false;
 var currentUserEmail = '';
 
 // =============================================================================
-// UTILS
+// UTILITAIRES
 // =============================================================================
 
 function isInsideGrist() {
@@ -1038,16 +1038,16 @@ function sanitize(str) {
 }
 
 // =============================================================================
-// COLUMN MAPPING UTILITIES
+// UTILITAIRES DE MAPPAGE DE COLONNES
 // =============================================================================
 
-// Load column mapping from PM_Config table
+// Charger le mapping de colonnes depuis la table PM_Config
 async function loadColumnMapping() {
   try {
     var configData = await grist.docApi.fetchTable(CONFIG_TABLE);
     if (!configData || !configData.Config_Key) return;
     
-    // Update columnMapping object from config table
+    // Mettre à jour l'objet columnMapping depuis la table de configuration
     for (var i = 0; i < configData.Config_Key.length; i++) {
       var key = configData.Config_Key[i];
       var tableName = configData.Table_Name[i];
@@ -1056,7 +1056,7 @@ async function loadColumnMapping() {
       // Convertit un suffixe snake_case vers camelCase (ex. start_date -> startDate)
       var toCamel = function(s) { return s.replace(/_([a-z])/g, function(_, c) { return c.toUpperCase(); }); };
 
-      // Parse key to determine which mapping to update
+      // Analyser la clé pour déterminer quel mapping mettre à jour
       if (key.startsWith('task_')) {
         var field = toCamel(key.slice(5));
         if (columnMapping.tasks[field] !== undefined) {
@@ -1084,7 +1084,7 @@ async function loadColumnMapping() {
         }
       }
       
-      // Also update table names if they differ
+      // Mettre aussi à jour les noms de tables si différents
       if (key === 'task_title') TASKS_TABLE = tableName;
       else if (key === 'user_name') USERS_TABLE = tableName;
       else if (key === 'project_name') PROJECTS_TABLE = tableName;
@@ -1096,14 +1096,14 @@ async function loadColumnMapping() {
   }
 }
 
-// Get field value from a record using mapping
+// Obtenir la valeur d'un champ d'un enregistrement via le mapping
 function getField(record, entity, field) {
   if (!record || !columnMapping[entity]) return null;
   var columnName = columnMapping[entity][field];
   return columnName ? record[columnName] : null;
 }
 
-// Set field value in a record object using mapping
+// Définir la valeur d'un champ dans un objet enregistrement via le mapping
 function setField(record, entity, field, value) {
   if (!record || !columnMapping[entity]) return;
   var columnName = columnMapping[entity][field];
@@ -1112,32 +1112,32 @@ function setField(record, entity, field, value) {
   }
 }
 
-// Get column name for a field using mapping
+// Obtenir le nom de colonne d'un champ via le mapping
 function getColumnName(entity, field) {
   if (!columnMapping[entity]) return field;
   return columnMapping[entity][field] || field;
 }
 
-// ChoiceList-safe role helpers
-// Grist ChoiceList is serialized as:
-//   - array: ["L", "role1", "role2"]  (first element is always "L" marker)
-//   - string: "L,role1,role2"          (same but joined)
-//   - plain string: "role1"            (Choice column, single value)
+// Aides pour les rôles, compatibles ChoiceList
+// Un ChoiceList Grist est sérialisé ainsi :
+//   - tableau : ["L", "role1", "role2"]  (le premier élément est toujours le marqueur "L")
+//   - chaîne : "L,role1,role2"          (idem, mais jointe)
+//   - chaîne simple : "role1"            (colonne Choice, valeur unique)
 function getUserRoles(u) {
   if (!u || !u.Role) return [];
   var raw = u.Role;
   if (Array.isArray(raw)) {
-    // Drop the Grist "L" marker if present
+    // Retirer le marqueur "L" de Grist s'il est présent
     var arr = (raw.length > 0 && raw[0] === 'L') ? raw.slice(1) : raw;
     return arr.filter(function(r) { return r && r !== 'L'; });
   }
   var s = String(raw).trim();
   if (!s) return [];
-  // String serialized ChoiceList: starts with "L,"
+  // ChoiceList sérialisée en chaîne : commence par "L,"
   if (s.length > 1 && s[0] === 'L' && s[1] === ',') {
     return s.slice(2).split(',').map(function(r) { return r.trim(); }).filter(Boolean);
   }
-  // Single choice value
+  // Valeur de choix unique
   return [s];
 }
 function userMatchesRole(u, role) {
@@ -1150,7 +1150,7 @@ function userRoleDisplay(u) {
 
 function formatDate(d) {
   if (!d) return '';
-  var date = new Date(d * 1000); // Grist stores dates as epoch seconds
+  var date = new Date(d * 1000); // Grist stocke les dates en secondes epoch
   if (isNaN(date.getTime())) {
     date = new Date(d);
     if (isNaN(date.getTime())) return '';
@@ -1202,7 +1202,7 @@ function getTaskSubtasks(taskId) {
 function getTaskProgress(task) {
   var taskSubtasks = getTaskSubtasks(task.id);
   if (taskSubtasks.length === 0) {
-    // No subtasks: use status-based progress
+    // Pas de sous-tâches : progression basée sur le statut
     return task.Status === 'done' ? 100 : (task.Status === 'progress' ? 50 : 10);
   }
   var completed = taskSubtasks.filter(function(st) { return st.Completed; }).length;
@@ -1210,7 +1210,7 @@ function getTaskProgress(task) {
 }
 
 function getTaskDependencies(taskId) {
-  // Returns tasks that this task depends on (blockers)
+  // Retourne les tâches dont cette tâche dépend (bloquantes)
   return dependencies.filter(function(d) { return d.Task_Id === taskId; })
     .map(function(d) {
       return tasks.find(function(t) { return t.id === d.Depends_On_Task_Id; });
@@ -1218,7 +1218,7 @@ function getTaskDependencies(taskId) {
 }
 
 function getTasksDependingOn(taskId) {
-  // Returns tasks that depend on this task (blocked by this)
+  // Retourne les tâches qui dépendent de cette tâche (bloquées par elle)
   return dependencies.filter(function(d) { return d.Depends_On_Task_Id === taskId; })
     .map(function(d) {
       return tasks.find(function(t) { return t.id === d.Task_Id; });
@@ -1233,7 +1233,7 @@ function isTaskBlocked(taskId) {
 }
 
 // =============================================================================
-// CONFIRM MODAL
+// MODALE DE CONFIRMATION
 // =============================================================================
 
 var confirmResolve = null;
@@ -1653,7 +1653,7 @@ function getTaskTotalTime(taskId) {
   for (var i = 0; i < entries.length; i++) {
     total += entries[i].Duration || 0;
   }
-  // Add running timer if active
+  // Ajouter le minuteur en cours s'il est actif
   if (activeTimers[taskId]) {
     total += Math.floor(Date.now() / 1000) - activeTimers[taskId];
   }
@@ -1719,12 +1719,12 @@ function getCustomFieldTypeLabel(type) {
 
 function getUserDisplayName(emailOrName) {
   if (!emailOrName) return '';
-  // Try to find user by email
+  // Tenter de trouver l'utilisateur par email
   var user = users.find(function(u) { 
     return u.Email === emailOrName || u.Name === emailOrName; 
   });
   if (user && user.Name) return user.Name;
-  // If no user found or no name, extract name from email
+  // Si aucun utilisateur trouvé ou pas de nom, extraire le nom de l'email
   if (emailOrName.indexOf('@') !== -1) {
     return emailOrName.split('@')[0];
   }
@@ -1786,7 +1786,7 @@ function statusLabel(s) {
 }
 
 // =============================================================================
-// TABS
+// ONGLETS
 // =============================================================================
 
 function switchTab(tabId) {
@@ -1796,7 +1796,7 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(function(tc) {
     tc.classList.toggle('active', tc.id === 'tab-' + tabId);
   });
-  // Save active tab to localStorage
+  // Enregistrer l'onglet actif dans localStorage
   localStorage.setItem('pm-active-tab', tabId);
   
   if (tabId === 'calendar') renderCalendarView();
@@ -1819,22 +1819,22 @@ function restoreActiveTab() {
 }
 
 // =============================================================================
-// INIT — CREATE TABLES IF NEEDED
+// INITIALISATION — CRÉER LES TABLES SI BESOIN
 // =============================================================================
 
 async function ensureTables() {
   try {
     var existingTables = await grist.docApi.listTables();
 
-    // If PM_Config already exists load the mapping NOW so table vars reflect any
-    // remapping the user has configured.  This prevents re-creating PM_Users etc.
-    // when they have been remapped to existing user-owned tables.
+    // Si PM_Config existe déjà, charger le mapping MAINTENANT pour que les variables
+    // de table reflètent tout remapping configuré par l'utilisateur. Cela évite de
+    // re-créer PM_Users etc. après remapping vers des tables existantes de l'utilisateur.
     if (existingTables.indexOf(CONFIG_TABLE) !== -1) {
       await loadColumnMapping();
     }
 
-    // Only auto-create a table when it (a) still has its default PM_* name
-    // (meaning it has not been remapped) AND (b) does not yet exist.
+    // Ne créer automatiquement une table que si elle (a) porte encore son nom PM_*
+    // par défaut (donc non remappée) ET (b) n'existe pas encore.
     if (TASKS_TABLE === DEFAULT_TASKS_TABLE && existingTables.indexOf(TASKS_TABLE) === -1) {
       await grist.docApi.applyUserActions([
         ['AddTable', TASKS_TABLE, [
@@ -2027,7 +2027,7 @@ async function ensureTables() {
       ]);
     }
 
-    // Create PM_CDP_BEP table if it doesn't exist (for project managers)
+    // Créer la table PM_CDP_BEP si elle n'existe pas (pour les chefs de projet)
     if (existingTables.indexOf(PROJECT_MANAGERS_TABLE) === -1) {
       await grist.docApi.applyUserActions([
         ['AddTable', PROJECT_MANAGERS_TABLE, [
@@ -2046,7 +2046,7 @@ async function ensureTables() {
         ]);
         console.log('[GristPM] Project_Id ajouté à PM_Tasks');
       }
-      // Add Duration column for task duration (Journée/Matin/Après-midi)
+      // Ajouter la colonne Duration pour la durée des tâches (Journée/Matin/Après-midi)
       if (taskColsCheck.indexOf('Duration') === -1) {
         await grist.docApi.applyUserActions([
           ['AddColumn', TASKS_TABLE, 'Duration', { type: 'Text' }]
@@ -2082,7 +2082,7 @@ async function ensureTables() {
       console.log('[GristPM] Migration CreatedBy ignorée :', e.message);
     }
 
-    // Create PM_Config table for column mapping configuration
+    // Créer la table PM_Config pour la configuration du mapping de colonnes
     if (existingTables.indexOf(CONFIG_TABLE) === -1) {
       await grist.docApi.applyUserActions([
         ['AddTable', CONFIG_TABLE, [
@@ -2095,9 +2095,9 @@ async function ensureTables() {
         ]]
       ]);
       
-      // Initialize with default mapping
+      // Initialiser avec le mapping par défaut
       var defaultConfig = [
-        // Tasks mapping
+        // Mapping des tâches
         ['task_title', TASKS_TABLE, 'Title', 'Titre', true, 'Title'],
         ['task_description', TASKS_TABLE, 'Description', 'Description', false, 'Description'],
         ['task_status', TASKS_TABLE, 'Status', 'Statut', true, 'Status'],
@@ -2112,21 +2112,21 @@ async function ensureTables() {
         ['task_estimated_hours', TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
         ['task_created_at', TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
         ['task_project_id', TASKS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
-        // Users mapping
+        // Mapping des utilisateurs
         ['user_name', USERS_TABLE, 'Name', 'Nom', true, 'Name'],
         ['user_email', USERS_TABLE, 'Email', 'Email', true, 'Email'],
         ['user_role', USERS_TABLE, 'Role', 'Rôle', false, 'Role'],
         ['user_group', USERS_TABLE, 'Group_Name', 'Groupe', false, 'Group_Name'],
-        // Projects mapping
+        // Mapping des projets
         ['project_name', PROJECTS_TABLE, 'Name', 'Nom', true, 'Name'],
         ['project_description', PROJECTS_TABLE, 'Description', 'Description', false, 'Description'],
         ['project_color', PROJECTS_TABLE, 'Color', 'Couleur', false, 'Color'],
         ['project_status', PROJECTS_TABLE, 'Status', 'Statut', false, 'Status'],
-        // Categories mapping
+        // Mapping des catégories
         ['category_name', CATEGORIES_TABLE, 'Name', 'Nom', true, 'Name'],
         ['category_color', CATEGORIES_TABLE, 'Color', 'Couleur', false, 'Color'],
         ['category_order', CATEGORIES_TABLE, 'Order', 'Ordre', false, 'Order'],
-        // Tags mapping
+        // Mapping des tags
         ['tag_name', TAGS_TABLE, 'Name', 'Nom', true, 'Name'],
         ['tag_color', TAGS_TABLE, 'Color', 'Couleur', false, 'Color']
       ];
@@ -2148,7 +2148,7 @@ async function ensureTables() {
       ]);
     }
 
-    // Create PM_Settings table for widget preferences (shared across users)
+    // Créer la table PM_Settings pour les préférences du widget (partagée entre utilisateurs)
     if (existingTables.indexOf(SETTINGS_TABLE) === -1) {
       await grist.docApi.applyUserActions([
         ['AddTable', SETTINGS_TABLE, [
@@ -2185,7 +2185,7 @@ async function ensureTables() {
       ]);
     }
 
-    // Migration: Add missing columns to existing PM_Tasks table
+    // Migration : ajouter les colonnes manquantes à la table PM_Tasks existante
     if (existingTables.indexOf(TASKS_TABLE) !== -1) {
       try {
         var tableInfo = await grist.docApi.fetchTable(TASKS_TABLE);
@@ -2211,7 +2211,7 @@ async function ensureTables() {
             ['AddColumn', TASKS_TABLE, 'Order', { type: 'Int' }]
           ]);
         }
-        // RACI columns
+        // Colonnes RACI
         var raciCols = ['Accountable', 'Consulted', 'Informed'];
         var raciActions = [];
         for (var rc = 0; rc < raciCols.length; rc++) {
@@ -2222,7 +2222,7 @@ async function ensureTables() {
         if (raciActions.length > 0) {
           await grist.docApi.applyUserActions(raciActions);
         }
-        // Extension columns
+        // Colonnes d'extension
         if (existingCols.indexOf('Extension_Date') === -1) {
           await grist.docApi.applyUserActions([['AddColumn', TASKS_TABLE, 'Extension_Date', { type: 'Date' }]]);
         }
@@ -2234,7 +2234,7 @@ async function ensureTables() {
       }
     }
 
-    // Migration: Add Blocked_By_Subtask_Id, Assignee, Due_Date to PM_Subtasks
+    // Migration : ajouter Blocked_By_Subtask_Id, Assignee, Due_Date à PM_Subtasks
     if (existingTables.indexOf(SUBTASKS_TABLE) !== -1) {
       try {
         var stInfo = await grist.docApi.fetchTable(SUBTASKS_TABLE);
@@ -2286,7 +2286,7 @@ async function ensureTables() {
 }
 
 // =============================================================================
-// LOAD DATA
+// CHARGEMENT DES DONNÉES
 // =============================================================================
 
 /**
@@ -2312,7 +2312,7 @@ async function cleanupEmptyDraftTasks() {
 }
 
 async function loadAllData() {
-  // Load column mapping first
+  // Charger d'abord le mapping de colonnes
   await loadColumnMapping();
   
   try {
@@ -2720,7 +2720,7 @@ function renderProjectSelector() {
   var container = document.getElementById('project-selector');
   if (!container) return;
 
-  // Rôles disponibles (distincts, triés) — supports ChoiceList arrays
+  // Rôles disponibles (distincts, triés) — compatible avec les tableaux ChoiceList
   var roleSet = {};
   users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
   var roles = Object.keys(roleSet).sort();
@@ -2801,12 +2801,12 @@ function renderProjectSelector() {
   html += '<div class="proj-dropdown-search"><input type="text" id="proj-search-input" placeholder="' + (currentLang === 'fr' ? 'Rechercher...' : 'Search...') + '" oninput="filterProjectDropdown(this.value)" autocomplete="off"></div>';
   var PROJ_INITIAL_LIMIT = 500;  // Mis arbitrairement à 500 pour ne pas limiter l'affichage des projets dans la liste déroulante (initialement à 5)
   html += '<div class="proj-dropdown-list" id="proj-dropdown-list">';
-  // "All projects" option (always shown)
+  // Option « Tous les projets » (toujours affichée)
   html += '<div class="proj-option' + (!currentProjectId ? ' selected' : '') + '" data-id="" data-name="" data-always="1" onclick="selectProjectOption(\'\')">';
   html += '<span class="proj-dot" style="background:#94a3b8;opacity:.4;"></span>';
   html += '<span>' + (currentLang === 'fr' ? 'Tous les projets' : 'All projects') + '</span>';
   html += '</div>';
-  // Project options — first 5 visible, rest hidden until search
+  // Options de projet — 5 premières visibles, le reste masqué jusqu'à la recherche
   var allTasksForCount = tasks;
   var sortedProjects = visibleProjects.slice().sort(function(a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
   var extraCount = Math.max(0, sortedProjects.length - PROJ_INITIAL_LIMIT);
@@ -2824,7 +2824,7 @@ function renderProjectSelector() {
     if (taskCount > 0) html += '<span class="proj-count">' + taskCount + '</span>';
     html += '</div>';
   });
-  // "More" hint shown when no search active
+  // Indication « Plus » affichée quand aucune recherche n'est active
   if (extraCount > 0) {
     html += '<div id="proj-more-hint" style="padding:6px 12px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #f1f5f9;">';
     html += '+ ' + extraCount + ' ' + (currentLang === 'fr' ? 'autres — tapez pour chercher' : 'more — type to search');
@@ -3109,7 +3109,7 @@ function toggleProjectDropdown() {
   }
 }
 
-// Keep showProjectDropdown as alias (called from old code paths if any)
+// Garder showProjectDropdown comme alias (appelé par d'anciens chemins de code, le cas échéant)
 function showProjectDropdown() { toggleProjectDropdown(); }
 
 function filterProjectDropdown(query) {
@@ -3120,7 +3120,7 @@ function filterProjectDropdown(query) {
   var opts = list.querySelectorAll('.proj-option');
 
   if (!q) {
-    // No query: show first 5 only (restore data-extra hidden state)
+    // Sans recherche : n'afficher que les 5 premières (restaurer l'état masqué data-extra)
     opts.forEach(function(opt) {
       if (opt.dataset.always === '1' || !opt.dataset.extra) {
         opt.style.display = '';
@@ -3130,7 +3130,7 @@ function filterProjectDropdown(query) {
     });
     if (hint) hint.style.display = '';
   } else {
-    // Query: show all matching, hide non-matching
+    // Avec recherche : afficher toutes les correspondantes, masquer les autres
     opts.forEach(function(opt) {
       var name = (opt.dataset.name || '').toLowerCase();
       opt.style.display = (opt.dataset.always === '1' || name.indexOf(q) !== -1) ? '' : 'none';
@@ -3415,7 +3415,7 @@ function refreshAllViews() {
 }
 
 // =============================================================================
-// STATS
+// STATISTIQUES
 // =============================================================================
 
 function updateStats() {
@@ -3445,11 +3445,11 @@ function updateStats() {
 }
 
 // =============================================================================
-// CALENDAR VIEW
+// VUE CALENDRIER
 // =============================================================================
 
 function renderCalendarView() {
-  // Update mode buttons
+  // Mettre à jour les boutons de mode
   document.querySelectorAll('.calendar-mode-btn').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-mode') === calendarMode);
   });
@@ -3469,10 +3469,10 @@ function renderCalendarView() {
     ? ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-  // Update title
+  // Mettre à jour le titre
   document.getElementById('calendar-month-title').textContent = monthNames[calendarMonth] + ' ' + calendarYear;
 
-  // Render weekdays
+  // Afficher les jours de la semaine
   var weekdaysHtml = '';
   for (var d = 0; d < 7; d++) {
     var isWeekend = d >= 5;
@@ -3480,7 +3480,7 @@ function renderCalendarView() {
   }
   document.getElementById('calendar-weekdays').innerHTML = weekdaysHtml;
 
-  // Calculate days
+  // Calculer les jours
   var firstDay = new Date(calendarYear, calendarMonth, 1);
   var lastDay = new Date(calendarYear, calendarMonth + 1, 0);
   var startDayOfWeek = (firstDay.getDay() + 6) % 7; // Monday = 0
@@ -3489,11 +3489,11 @@ function renderCalendarView() {
   var today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Render days
+  // Afficher les jours
   var daysHtml = '';
   var dayIndex = 0;
 
-  // Previous month days
+  // Jours du mois précédent
   var prevMonth = new Date(calendarYear, calendarMonth, 0);
   var prevMonthDays = prevMonth.getDate();
   for (var i = startDayOfWeek - 1; i >= 0; i--) {
@@ -3504,7 +3504,7 @@ function renderCalendarView() {
     dayIndex++;
   }
 
-  // Current month days
+  // Jours du mois courant
   for (var d = 1; d <= daysInMonth; d++) {
     var currentDate = new Date(calendarYear, calendarMonth, d);
     var isToday = currentDate.getTime() === today.getTime();
@@ -3513,8 +3513,8 @@ function renderCalendarView() {
     dayIndex++;
   }
 
-  // Next month days
-  var remainingDays = 42 - dayIndex; // 6 rows * 7 days
+  // Jours du mois suivant
+  var remainingDays = 42 - dayIndex; // 6 lignes * 7 jours
   for (var i = 1; i <= remainingDays; i++) {
     var nextDate = new Date(calendarYear, calendarMonth + 1, i);
     var nextTasks = getTasksForDate(nextDate);
@@ -3527,7 +3527,7 @@ function renderCalendarView() {
 }
 
 function renderCalendarDay(dayNum, date, dayTasks, isOtherMonth, isToday, isWeekView) {
-  // Validate date
+  // Valider la date
   if (!date || isNaN(date.getTime())) {
     console.error('Invalid date in renderCalendarDay:', date);
     return '';
@@ -3592,18 +3592,18 @@ async function onCalendarDrop(event, dateStr) {
   var task = tasks.find(function(t) { return t.id === calendarDraggedTaskId; });
   if (!task) return;
   
-  // Parse the new date
+  // Analyser la nouvelle date
   var parts = dateStr.split('-');
   var newDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
   var newTimestamp = Math.floor(newDate.getTime() / 1000);
   
-  // Calculate duration if task has both start and due dates
+  // Calculer la durée si la tâche a une date de début et une date d'échéance
   var duration = 0;
   if (task.Start_Date && task.Due_Date) {
     duration = task.Due_Date - task.Start_Date;
   }
   
-  // Update the task dates
+  // Mettre à jour les dates de la tâche
   var updates = { Due_Date: newTimestamp };
   if (task.Start_Date) {
     updates.Start_Date = newTimestamp - duration;
@@ -3657,7 +3657,7 @@ function setCalendarMode(mode) {
 function getWeekStart(offset) {
   var today = new Date();
   var day = today.getDay();
-  var diff = day === 0 ? -6 : 1 - day; // Get to Monday
+  var diff = day === 0 ? -6 : 1 - day; // revenir au lundi
   var monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff + (offset * 7));
   return monday;
 }
@@ -3684,7 +3684,7 @@ function getTasksForDate(date) {
 }
 
 function renderCalendarWeekView() {
-  // Calculate week start (Monday) based on offset
+  // Calculer le début de semaine (lundi) selon le décalage
   var now = new Date();
   var dayOfWeek = now.getDay();
   var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -3699,7 +3699,7 @@ function renderCalendarWeekView() {
 
   var weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
 
-  // Update title
+  // Mettre à jour le titre
   var startMonth = monthNames[weekStartDate.getMonth()];
   var endMonth = monthNames[weekEndDate.getMonth()];
   var title = weekStartDate.getDate() + ' ' + startMonth;
@@ -3714,7 +3714,7 @@ function renderCalendarWeekView() {
   var today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Render weekdays with dates
+  // Afficher les jours de la semaine avec les dates
   var weekdaysHtml = '';
   for (var d = 0; d < 7; d++) {
     var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
@@ -3726,7 +3726,7 @@ function renderCalendarWeekView() {
   }
   document.getElementById('calendar-weekdays').innerHTML = weekdaysHtml;
 
-  // Render days
+  // Afficher les jours
   var daysHtml = '';
   for (var d = 0; d < 7; d++) {
     var dayDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + d);
@@ -3928,7 +3928,7 @@ function renderCalendarDayView() {
     });
   }
 
-  // Quick add task for this day
+  // Ajout rapide de tâche pour ce jour
   var dateStr = viewDate.getFullYear() + '-' + String(viewDate.getMonth() + 1).padStart(2, '0') + '-' + String(viewDate.getDate()).padStart(2, '0');
   html += '<div class="day-add-task" onclick="openNewTaskForDay(\'' + dateStr + '\')">';
   html += '+ ' + (currentLang === 'fr' ? 'Ajouter une tâche ce jour' : 'Add a task for this day');
@@ -3946,7 +3946,7 @@ function openNewTaskForDay(dateStr) {
 }
 
 // =============================================================================
-// KANBAN VIEW
+// VUE KANBAN
 // =============================================================================
 
 function setKanbanGroupBy(value) {
@@ -4370,7 +4370,7 @@ function updateArchiveButton() {
 }
 
 // =============================================================================
-// DRAG & DROP
+// GLISSER-DÉPOSER
 // =============================================================================
 
 var draggedTaskId = null;
@@ -4450,7 +4450,7 @@ async function onDrop(e) {
 }
 
 // =============================================================================
-// TABLE VIEW
+// VUE TABLEAU
 // =============================================================================
 
 var tableSortField = null;
@@ -4557,7 +4557,7 @@ function renderTableView() {
     html += '</td>';
     html += '</tr>';
 
-    // Subtasks rows (hidden by default) — B1 : colonnes enrichies, sans pastille près du titre
+    // Lignes des sous-tâches (masquées par défaut) — B1 : colonnes enrichies, sans pastille près du titre
     var _nowSec = Math.floor(Date.now() / 1000);
     for (var si = 0; si < taskSubtasks.length; si++) {
       var st = taskSubtasks[si];
@@ -4639,7 +4639,7 @@ function renderProjectListView() {
   }
   
   // Initialiser tous les projets comme repliés par défaut (sauf si déjà définis manuellement)
-  // Note: On initialise expandedProjectListProjects mais on conserve allProjectListTasksExpanded
+  // Note : on initialise expandedProjectListProjects mais on conserve allProjectListTasksExpanded
   if (Object.keys(expandedProjectListProjects).length === 0) {
     // Si l'état global indique "tout déplié", on déplie tout, sinon on replie tout
     if (allProjectListTasksExpanded) {
@@ -4784,11 +4784,11 @@ function collapseAllSubtasks() {
 }
 
 async function toggleSubtaskFromTable(subtaskId, completed) {
-  // Find parent task ID before updating
+  // Trouver l'id de la tâche parente avant la mise à jour
   var subtask = subtasks.find(function(st) { return st.id === subtaskId; });
   var parentTaskId = subtask ? subtask.Parent_Task_Id : null;
   
-  // Remember which toggles are expanded
+  // Mémoriser les bascules dépliées
   var expandedTasks = [];
   document.querySelectorAll('.toggle-btn.expanded').forEach(function(btn) {
     var taskId = btn.id.replace('toggle-', '');
@@ -4799,17 +4799,17 @@ async function toggleSubtaskFromTable(subtaskId, completed) {
     await grist.docApi.applyUserActions([
       ['UpdateRecord', SUBTASKS_TABLE, subtaskId, { Completed: completed }]
     ]);
-    // Update local state
+    // Mettre à jour l'état local
     for (var i = 0; i < subtasks.length; i++) {
       if (subtasks[i].id === subtaskId) {
         subtasks[i].Completed = completed;
         break;
       }
     }
-    // Refresh table view
+    // Rafraîchir la vue tableau
     renderTableView();
     
-    // Restore expanded toggles
+    // Restaurer les bascules dépliées
     expandedTasks.forEach(function(taskId) {
       var rows = document.querySelectorAll('.subtask-row[data-parent="' + taskId + '"]');
       var btn = document.getElementById('toggle-' + taskId);
@@ -4822,7 +4822,7 @@ async function toggleSubtaskFromTable(subtaskId, completed) {
       }
     });
     
-    // If modal is open, refresh it too
+    // Si la modale est ouverte, la rafraîchir aussi
     var modal = document.getElementById('edit-task-modal');
     if (modal && modal.style.display !== 'none' && parentTaskId) {
       openEditTaskModal(parentTaskId);
@@ -4981,7 +4981,7 @@ async function wbsSubtaskRowDrop(e, targetSubtaskId) {
 }
 
 // =============================================================================
-// GANTT VIEW
+// VUE GANTT
 // =============================================================================
 
 function getISOWeek(date) {
@@ -5235,7 +5235,7 @@ function renderGanttView() {
       yearSelect.appendChild(opt);
     }
   }
-  // Always sync select TO ganttYear (never overwrite ganttYear from select)
+  // Toujours synchroniser le select VERS ganttYear (ne jamais écraser ganttYear depuis le select)
   yearSelect.value = ganttYear;
 
   document.querySelectorAll('[data-gantt-mode]').forEach(function(btn) {
@@ -5324,7 +5324,7 @@ function renderGanttView() {
 
   var html = '<div class="gantt-container"><table class="gantt-table">';
 
-  // ===== WEEKS MODE =====
+  // ===== MODE SEMAINES =====
   if (ganttMode === 'weeks') {
     var weekColW = 80;
     // Semaines ISO engendrees de proche en proche depuis le lundi de reference :
@@ -5377,13 +5377,13 @@ function renderGanttView() {
       }
     }
 
-    // Task rows - grouped by project
+    // Lignes de tâches - groupées par projet
     var weeksColSpan = 1 + weeks.length;
     for (var pi = 0; pi < sortedProjectIds.length; pi++) {
       var projId = sortedProjectIds[pi];
       var projTasks = tasksByProject[projId];
       
-      // Render tasks for this project
+      // Afficher les tâches de ce projet
       for (var ti = 0; ti < projTasks.length; ti++) {
         var task = projTasks[ti];
         var barClass = getGanttBarClass(task);
@@ -5448,7 +5448,7 @@ function renderGanttView() {
       }
     }
 
-    // Footer
+    // Pied de page
     var viewStartMonth = monthNames[weeks[0].start.getMonth()];
     var viewEndMonth = monthNames[weeks[weeks.length - 1].start.getMonth()];
     html += '</tbody></table>';
@@ -5459,14 +5459,14 @@ function renderGanttView() {
 
     var ganttContainer = document.getElementById('gantt-view');
     if (ganttContainer) {
-      // Save scroll position before re-rendering
+      // Sauvegarder la position de scroll avant re-rendu
       var oldScrollEl = ganttContainer.querySelector('.gantt-container');
       var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
       var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
       
       ganttContainer.innerHTML = html;
       
-      // Restore scroll position after re-rendering
+      // Restaurer la position de scroll après re-rendu
       var newScrollEl = ganttContainer.querySelector('.gantt-container');
       if (newScrollEl) {
         newScrollEl.scrollLeft = savedGanttScrollLeft;
@@ -5477,7 +5477,7 @@ function renderGanttView() {
     return;
   }
 
-  // ===== YEAR / TWOYEARS MODE =====
+  // ===== MODE ANNÉE / DEUX ANNÉES =====
   if (ganttMode === 'year' || ganttMode === 'twoyears') {
     var numYears = ganttMode === 'twoyears' ? 2 : 1;
     var totalMonths = numYears * 12;
@@ -5504,13 +5504,13 @@ function renderGanttView() {
     }
     html += '</tr></thead><tbody>';
 
-    // Task rows - grouped by project
+    // Lignes de tâches - groupées par projet
     var yearColSpan = 1 + totalMonths;
     for (var pi = 0; pi < sortedProjectIds.length; pi++) {
       var projId = sortedProjectIds[pi];
       var projTasks = tasksByProject[projId];
       
-      // Render tasks for this project
+      // Afficher les tâches de ce projet
       for (var ti = 0; ti < projTasks.length; ti++) {
         var task = projTasks[ti];
         var barClass = getGanttBarClass(task);
@@ -5613,14 +5613,14 @@ function renderGanttView() {
 
     var ganttContainer = document.getElementById('gantt-view');
     if (ganttContainer) {
-      // Save scroll position before re-rendering
+      // Sauvegarder la position de scroll avant re-rendu
       var oldScrollEl = ganttContainer.querySelector('.gantt-container');
       var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
       var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
       
       ganttContainer.innerHTML = html;
       
-      // Restore scroll position after re-rendering
+      // Restaurer la position de scroll après re-rendu
       var newScrollEl = ganttContainer.querySelector('.gantt-container');
       if (newScrollEl) {
         newScrollEl.scrollLeft = savedGanttScrollLeft;
@@ -5631,7 +5631,7 @@ function renderGanttView() {
     return;
   }
 
-  // ===== MONTHS MODE =====
+  // ===== MODE MOIS =====
   if (ganttMode === 'months') {
     // C3 : les colonnes s'elargissent pour occuper toute la largeur disponible
     // (le diagramme laissait la moitie de l'ecran vide).
@@ -5655,13 +5655,13 @@ function renderGanttView() {
     }
     html += '</tr></thead><tbody>';
 
-    // Task rows - grouped by project
+    // Lignes de tâches - groupées par projet
     var monthsColSpan = 1 + 12;
     for (var pi = 0; pi < sortedProjectIds.length; pi++) {
       var projId = sortedProjectIds[pi];
       var projTasks = tasksByProject[projId];
       
-      // Render tasks for this project
+      // Afficher les tâches de ce projet
       for (var ti = 0; ti < projTasks.length; ti++) {
         var task = projTasks[ti];
         var barClass = getGanttBarClass(task);
@@ -5738,14 +5738,14 @@ function renderGanttView() {
 
     var ganttContainer = document.getElementById('gantt-view');
     if (ganttContainer) {
-      // Save scroll position before re-rendering
+      // Sauvegarder la position de scroll avant re-rendu
       var oldScrollEl = ganttContainer.querySelector('.gantt-container');
       var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
       var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
       
       ganttContainer.innerHTML = html;
       
-      // Restore scroll position after re-rendering
+      // Restaurer la position de scroll après re-rendu
       var newScrollEl = ganttContainer.querySelector('.gantt-container');
       if (newScrollEl) {
         newScrollEl.scrollLeft = savedGanttScrollLeft;
@@ -5756,7 +5756,7 @@ function renderGanttView() {
     return;
   }
 
-  // ===== DAYS MODE (et mode PERSONNALISÉ : mêmes colonnes-jours sur une plage libre) =====
+  // ===== MODE JOURS (et mode PERSONNALISÉ : mêmes colonnes-jours sur une plage libre) =====
   var startDate, endDate;
   if (ganttMode === 'custom' && ganttCustomStart && ganttCustomEnd) {
     startDate = new Date(ganttCustomStart + 'T00:00:00');
@@ -5781,7 +5781,7 @@ function renderGanttView() {
     d.setDate(d.getDate() + 1);
   }
 
-  // Month header row
+  // Ligne d'en-tête des mois
   html += '<thead><tr><th class="gantt-task-label" style="text-align:left;" rowspan="2">' + t('colTaskName') + '</th>';
   var prevMonth = -1;
   for (var di0 = 0; di0 < days.length; di0++) {
@@ -5805,13 +5805,13 @@ function renderGanttView() {
   }
   html += '</tr></thead><tbody>';
 
-  // Task rows - grouped by project
+  // Lignes de tâches - groupées par projet
   var daysColSpan = 1 + days.length;
   for (var pi = 0; pi < sortedProjectIds.length; pi++) {
     var projId = sortedProjectIds[pi];
     var projTasks = tasksByProject[projId];
     
-    // Render tasks for this project
+    // Afficher les tâches de ce projet
     for (var ti = 0; ti < projTasks.length; ti++) {
       var task = projTasks[ti];
       var barClass = getGanttBarClass(task);
@@ -5930,14 +5930,14 @@ function renderGanttView() {
 
   var ganttContainer = document.getElementById('gantt-view');
   if (ganttContainer) {
-    // Save scroll position before re-rendering
+    // Sauvegarder la position de scroll avant re-rendu
     var oldScrollEl = ganttContainer.querySelector('.gantt-container');
     var savedGanttScrollLeft = oldScrollEl ? oldScrollEl.scrollLeft : 0;
     var savedGanttScrollTop = oldScrollEl ? oldScrollEl.scrollTop : 0;
     
     ganttContainer.innerHTML = html;
     
-    // Restore scroll position after re-rendering
+    // Restaurer la position de scroll après re-rendu
     var newScrollEl = ganttContainer.querySelector('.gantt-container');
     if (newScrollEl) {
       newScrollEl.scrollLeft = savedGanttScrollLeft;
@@ -6108,11 +6108,11 @@ function toggleGanttFullscreen() {
 }
 
 // =============================================================================
-// PLANNING VIEW
+// VUE PLANNING
 // =============================================================================
 
 function renderPlanningView() {
-  // Initialize all users as expanded by default (point 3)
+  // Initialiser tous les utilisateurs comme dépliés par défaut (point 3)
   if (Object.keys(expandedPlanningUsers).length === 0) {
     initPlanningUsersExpanded();
   }
@@ -6128,12 +6128,12 @@ function renderPlanningView() {
   }
   if (yearSelect) yearSelect.value = planningYear;
 
-  // Update mode buttons
+  // Mettre à jour les boutons de mode
   document.querySelectorAll('[data-planning-mode]').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-planning-mode') === planningMode);
   });
 
-  // Show/hide custom range
+  // Afficher/masquer la plage personnalisée
   var rangeBox = document.getElementById('planning-custom-range');
   if (rangeBox) rangeBox.style.display = (planningMode === 'custom') ? 'flex' : 'none';
   if (planningMode === 'custom') {
@@ -6163,23 +6163,23 @@ function renderPlanningView() {
   // Pour revenir en arrière : supprimer le style inline ci-dessous
   var html = '<div class="gantt-container planning-container" style="overflow:visible !important; max-height:none !important;"><table class="gantt-table planning-table">';
 
-  // Group tasks by assignee - each task appears under each assigned person
-  // Use unique identifier (email) as key to avoid conflicts with same display names
+  // Grouper les tâches par assigné - chaque tâche apparaît sous chaque personne assignée
+  // Utiliser l'identifiant unique (email) comme clé pour éviter les conflits entre noms d'affichage identiques
   var tasksByUser = {};
-  var userDisplayNames = {}; // Map from identifier to display name
+  var userDisplayNames = {}; // correspondance identifiant -> nom d'affichage
   
   tasksWithDates.forEach(function(task) { 
     var assigneeStr = task.Assignee || '';
     var assigneeList = assigneeStr.split(',').map(function(a) { return a.trim(); }).filter(Boolean);
     
-    // If no assignee, use "Unassigned"
+    // Si pas d'assigné, utiliser "Unassigned"
     if (assigneeList.length === 0) {
       var unassignedKey = currentLang === 'fr' ? 'Non assigné' : 'Unassigned';
       assigneeList = [unassignedKey];
       userDisplayNames[unassignedKey] = unassignedKey;
     }
     
-    // Add task to each assignee's list using unique identifier
+    // Ajouter la tâche à la liste de chaque assigné via l'identifiant unique
     assigneeList.forEach(function(assignee) {
       var user = findUserByIdent(assignee);
       var identifier = user ? (user.Email || user.Name) : assignee;
@@ -6191,7 +6191,7 @@ function renderPlanningView() {
     });
   });
 
-  // Group users by their group
+  // Grouper les utilisateurs par groupe
   var usersByGroup = {};
   var allGroups = [];
   var userGroupMap = {};
@@ -6209,7 +6209,7 @@ function renderPlanningView() {
     if (allGroups.indexOf(groupName) === -1) allGroups.push(groupName);
   });
 
-  // Sort groups - special groups ("Non assigné", "Unassigned", "Sans Groupe", "No Group") at the end
+  // Trier les groupes - groupes spéciaux ("Non assigné", "Unassigned", "Sans Groupe", "No Group") à la fin
   allGroups.sort(function(a, b) {
     var aIsSpecial = a === 'Non assigné' || a === 'Unassigned' || a === 'Sans Groupe' || a === 'No Group';
     var bIsSpecial = b === 'Non assigné' || b === 'Unassigned' || b === 'Sans Groupe' || b === 'No Group';
@@ -6219,22 +6219,22 @@ function renderPlanningView() {
     return a.localeCompare(b);
   });
 
-  // Create a list of users with group headers
+  // Créer une liste d'utilisateurs avec en-têtes de groupe
   var sortedUsersWithGroups = [];
   allGroups.forEach(function(groupName) {
-    // Add group header
+    // Ajouter l'en-tête de groupe
     sortedUsersWithGroups.push({ type: 'header', groupName: groupName });
     
-    // Add users in this group, sorted
+    // Ajouter les utilisateurs de ce groupe, triés
     usersByGroup[groupName].sort().forEach(function(userId) {
       sortedUsersWithGroups.push({ type: 'user', userId: userId });
     });
   });
 
-  // Apply filters if active
+  // Appliquer les filtres actifs
   if (currentFilterAssignee) {
     var filterIdentSet = personIdentSet(currentFilterAssignee);
-    // Filter the sortedUsersWithGroups to only include matching users
+    // Filtrer sortedUsersWithGroups pour n'inclure que les utilisateurs correspondants
     var filteredList = [];
     sortedUsersWithGroups.forEach(function(item) {
       if (item.type === 'header') {
@@ -6257,7 +6257,7 @@ function renderPlanningView() {
     });
     sortedUsersWithGroups = filteredList;
   } else if (currentFilterRole) {
-    // Filter by role: only show users with this role
+    // Filtre par rôle : n'afficher que les utilisateurs avec ce rôle
     var filteredList = [];
     sortedUsersWithGroups.forEach(function(item) {
       if (item.type === 'header') {
@@ -6273,7 +6273,7 @@ function renderPlanningView() {
     sortedUsersWithGroups = filteredList;
   }
 
-  // Determine date range based on mode
+  // Déterminer la plage de dates selon le mode
   var startDate, endDate, headers = [];
 
   if (planningMode === 'custom' && planningCustomStart && planningCustomEnd) {
@@ -6281,14 +6281,14 @@ function renderPlanningView() {
     endDate = new Date(planningCustomEnd + 'T23:59:59');
     headers = generatePlanningHeadersCustom(startDate, endDate, currentLang);
   } else if (planningMode === 'days') {
-    // 3 months view
+    // Vue 3 mois
     startDate = new Date(planningYear, planningMonth, 1);  // Affichage à partir 1er du mois sélectionné
     //startDate = new Date(planningYear, planningMonth - 1, 1);
     endDate = new Date(planningYear, planningMonth + 6, 0, 23, 59, 59); // Affichage jusqu'à la fin du 6ème mois après le mois sélectionné
     //endDate = new Date(planningYear, planningMonth + 2, 0, 23, 59, 59);
     headers = generatePlanningHeadersDays(startDate, endDate, dayNames, monthNamesShort, currentLang);
   } else if (planningMode === 'weeks') {
-    // 8 weeks view
+    // Vue 8 semaines
     var eightWeeksAgo = new Date(planningYear, planningMonth, 1);
     eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
     var startWeek = getISOWeek(eightWeeksAgo);
@@ -6313,7 +6313,7 @@ function renderPlanningView() {
       });
     }
   } else if (planningMode === 'months') {
-    // 12 months view
+    // Vue 12 mois
     headers = [];
     for (var m = 0; m < 12; m++) {
       var monthStart = new Date(Date.UTC(planningYear, m, 1, 0, 0, 0, 0));
@@ -6328,7 +6328,7 @@ function renderPlanningView() {
       });
     }
   } else if (planningMode === 'year') {
-    // 12 months view for year
+    // Vue 12 mois pour l'année
     headers = [];
     for (var m2 = 0; m2 < 12; m2++) {
       var monthStart2 = new Date(Date.UTC(planningYear, m2, 1, 0, 0, 0, 0));
@@ -6343,7 +6343,7 @@ function renderPlanningView() {
       });
     }
   } else if (planningMode === 'twoyears') {
-    // 24 months view
+    // Vue 24 mois
     headers = [];
     for (var y2 = 0; y2 < 2; y2++) {
       var year = planningYear + y2;
@@ -6362,7 +6362,7 @@ function renderPlanningView() {
     }
   }
 
-  // Generate header row
+  // Générer la ligne d'en-tête
   html += '<thead><tr><th class="gantt-task-label" style="text-align:left;background:white;">' + t('colAssignee') + '</th>';
   for (var hi = 0; hi < headers.length; hi++) {
     var h = headers[hi];
@@ -6376,11 +6376,11 @@ function renderPlanningView() {
   }
   html += '</tr></thead><tbody>';
 
-  // Render rows for each user with group headers - ONE ROW PER USER with all tasks on same line
+  // Afficher les lignes de chaque utilisateur avec en-têtes de groupe - UNE LIGNE PAR UTILISATEUR, toutes les tâches sur la même ligne
   for (var ui = 0; ui < sortedUsersWithGroups.length; ui++) {
     var item = sortedUsersWithGroups[ui];
     
-    // Render group header row
+    // Afficher la ligne d'en-tête de groupe
     // TEST : Gris plus foncé pour les groupes (ancien: #f1f5f9)
     if (item.type === 'header') {
       var groupName = item.groupName;
@@ -6391,7 +6391,7 @@ function renderPlanningView() {
       }
       html += '</tr>';
     }
-    // Render user row
+    // Afficher la ligne utilisateur
     else if (item.type === 'user') {
       var user = item.userId;
       var userTasks = tasksByUser[user];
@@ -6400,7 +6400,7 @@ function renderPlanningView() {
 
       html += '<tr class="planning-row" data-user="' + sanitize(user) + '" style="' + (isExpanded ? '' : 'display:none;') + '">';
       
-      // User label column
+      // Colonne libellé utilisateur
       html += '<td class="gantt-task-label planning-user-label" style="vertical-align:top;background:white;transform:translateZ(0);white-space:nowrap;">';
       html += '<span class="planning-user-expand" onclick="togglePlanningUser(\'' + sanitize(user) + '\')" style="cursor:pointer;margin-right:6px;display:inline-block;width:16px;text-align:center;">';
       html += isExpanded ? '▼' : '▶';
@@ -6408,13 +6408,13 @@ function renderPlanningView() {
       html += '<strong style="color:' + getUserColor(user) + ';">' + sanitize(displayName) + '</strong>';
       html += '</td>';
 
-      // For each time period, render all tasks for this user
+      // Pour chaque période, afficher toutes les tâches de cet utilisateur
       for (var hi2 = 0; hi2 < headers.length; hi2++) {
         var h2 = headers[hi2];
         var cellStart = h2.start;
         var cellEnd = h2.end;
         
-        // Find all tasks for this user that overlap with this period
+        // Trouver toutes les tâches de cet utilisateur qui chevauchent cette période
         var overlappingTasks = userTasks.filter(function(task) {
           var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
           var tEnd = task.Due_Date ? new Date(task.Due_Date * 1000) : null;
@@ -6426,10 +6426,10 @@ function renderPlanningView() {
           return (tStart && tStart <= cellEnd) && (tEnd && tEnd >= cellStart);
         });
         
-        // Calculate height to contain stacked tasks (28 pour 1 tache puis 24px par tache + 4px padding)
+        // Calculer la hauteur pour contenir les tâches empilées (28 pour 1 tâche puis 24px par tâche + 4px de padding)
         var cellMinHeight = Math.max(28, (overlappingTasks.length * 24)+4 );
         html += '<td class="gantt-cell planning-cell' + (h2.isWeekend ? ' weekend-col' : '') + '" style="position:relative;padding:0;height:' + cellMinHeight + 'px; ' + (h2.isCurrent ? 'background:#fef2f2;color:#ef4444;' : '') + ';" onclick="onPlanningDayClick(\'' + sanitize(user) + '\', null, \'' + cellStart.toISOString().split('T')[0] + '\')">';
-        // Render each overlapping task as a bar in this cell
+        // Afficher chaque tâche chevauchante sous forme de barre dans cette cellule
         var barIndex = 0;
         overlappingTasks.forEach(function(task) {
           var tStart = task.Start_Date ? new Date(task.Start_Date * 1000) : null;
@@ -6442,7 +6442,7 @@ function renderPlanningView() {
           var barClass = getGanttBarClass(task);
           var barCustomColor = getGanttBarColor(task);
           
-          // Calculate position and width
+          // Calculer position et largeur
           var totalDuration = cellEnd - cellStart;
           var taskInCellStart = Math.max(tStart.getTime(), cellStart.getTime());
           var taskInCellEnd = Math.min(tEnd.getTime(), cellEnd.getTime());
@@ -6451,14 +6451,14 @@ function renderPlanningView() {
           var widthPercent = (durationInCell / totalDuration * 100);
           
           if (widthPercent > 2) {
-            // Stack bars vertically to avoid overlap + 2px margin on top
-            var topOffset = barIndex * 24 + 2; // 24px offset for each additional task + 2px top margin
+            // Empiler les barres verticalement pour éviter le chevauchement + 2px de marge en haut
+            var topOffset = barIndex * 24 + 2; // décalage de 24px par tâche supplémentaire + 2px de marge en haut
             var tooltip = sanitize(task.Title || '') + '\n' +
                           (currentLang === 'fr' ? 'Projet' : 'Project') + ': ' + sanitize((getProjectName(task.Project_Id)) || '') + '\n' +
                           (currentLang === 'fr' ? 'Statut' : 'Status') + ': ' + sanitize(statusLabel(task.Status) || '') + '\n' +
                           (currentLang === 'fr' ? 'Priorité' : 'Priority') + ': ' + sanitize(priorityLabel(task.Priority) || '');
             
-            // Duration-based styling for Planning view
+            // Style basé sur la durée pour la vue Planning
             var durationClass = '';
             if (task.Duration === 'Matin') {
               durationClass = 'duration-morning';
@@ -6469,7 +6469,7 @@ function renderPlanningView() {
             var onClickHandler = 'event.stopPropagation();openEditTaskModal(' + task.id + ')';
             
             if (durationClass) {
-              // For Matin/Après-midi: wrapper with white background + bar with clip-path
+              // Pour Matin/Après-midi : conteneur à fond blanc + barre avec clip-path
               html += '<div class="gantt-bar-wrapper" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
               html += '<div class="gantt-bar ' + barClass + ' ' + durationClass + '" style="position:absolute;top:0;left:0;right:0;bottom:0;' + (barCustomColor ? 'background:' + barCustomColor + ';' : '') + '">';
               if (widthPercent > 30) {
@@ -6477,7 +6477,7 @@ function renderPlanningView() {
               }
               html += '</div></div>';
             } else {
-              // For Journée: normal bar
+              // Pour Journée : barre normale
               html += '<div class="gantt-bar ' + barClass + '" style="position:absolute;left:' + startPercent.toFixed(1) + '%;width:' + widthPercent.toFixed(1) + '%;top:' + topOffset + 'px;height:22px;' + (barCustomColor ? 'background:' + barCustomColor + ';color:white;' : '') + 'cursor:pointer;" title="' + tooltip.replace(/\n/g, '&#10;') + '" onclick="' + onClickHandler + '">';
               if (widthPercent > 30) {
                 html += '<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sanitize(task.Title || '') + '</span>';
@@ -6500,13 +6500,13 @@ function renderPlanningView() {
   
   var container = document.getElementById('planning-view');
   if (container) {
-    // Save scroll position before re-rendering
+    // Sauvegarder la position de scroll avant re-rendu
     var scrollContainer = container.querySelector('.gantt-container, .planning-container');
     var savedScrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
     var savedScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
     
     container.innerHTML = html;
-    // Add click handler for user expansion
+    // Ajouter le gestionnaire de clic pour déplier l'utilisateur
     container.querySelectorAll('.planning-user-expand').forEach(function(el) {
       el.onclick = function(e) {
         e.stopPropagation();
@@ -6515,7 +6515,7 @@ function renderPlanningView() {
       };
     });
     
-    // Restore scroll position after re-rendering
+    // Restaurer la position de scroll après re-rendu
     var newScrollContainer = container.querySelector('.gantt-container, .planning-container');
     if (newScrollContainer) {
       newScrollContainer.scrollLeft = savedScrollLeft;
@@ -6526,7 +6526,7 @@ function renderPlanningView() {
 }
 
 function getUserColor(user) {
-  // Return a consistent color for each user
+  // Retourner une couleur cohérente pour chaque utilisateur
   var colors = ['#ef4444', '#f59e0b', '#fbbf24', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#06b6d4'];
   var hash = 0;
   for (var i = 0; i < user.length; i++) {
@@ -6563,7 +6563,7 @@ function generatePlanningHeadersCustom(startDate, endDate, lang) {
   var current = new Date(startDate);
   var diffDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
   
-  // If more than 60 days, use weeks
+  // Si plus de 60 jours, utiliser des semaines
   if (diffDays > 60) {
     while (current <= endDate) {
       var weekStart = new Date(Date.UTC(current.getFullYear(), current.getMonth(), current.getDate(), 0, 0, 0, 0));
@@ -6587,7 +6587,7 @@ function generatePlanningHeadersCustom(startDate, endDate, lang) {
       current.setDate(current.getDate() + 7);
     }
   } else {
-    // Daily view
+    // Vue journalière
     var dayNames = lang === 'fr'
       ? ['DIM.', 'LUN.', 'MAR.', 'MER.', 'JEU.', 'VEN.', 'SAM.']
       : ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -6687,7 +6687,7 @@ function togglePlanningUser(user) {
 }
 
 function planningExpandAll() {
-  // Use the same logic as initPlanningUsersExpanded to get all unique user identifiers
+  // Utiliser la même logique que initPlanningUsersExpanded pour obtenir tous les identifiants uniques
   var tasksWithDates = getFilteredTasks().filter(function(task) { return task.Start_Date || task.Due_Date; });
   var allUsers = {};
   tasksWithDates.forEach(function(task) {
@@ -6778,13 +6778,13 @@ function onPlanningDayClick(user, taskId, date) {
   if (taskId) {
     openEditTaskModal(taskId);
   } else {
-    // Open new task modal with assignee and date pre-filled
+    // Ouvrir la modale de nouvelle tâche avec assigné et date pré-remplis
     startNewTaskFast(null, date, { assignee: user });
   }
 }
 
 // =============================================================================
-// TEMPLATES VIEW
+// VUE MODÈLES
 // =============================================================================
 
 function renderTemplatesView() {
@@ -6831,7 +6831,7 @@ function renderTemplatesView() {
 }
 
 // =============================================================================
-// TEAM VIEW (Users & Groups)
+// VUE ÉQUIPE (Utilisateurs & Groupes)
 // =============================================================================
 
 function renderTeamView() {
@@ -6844,7 +6844,7 @@ function renderUsersList() {
   var container = document.getElementById('users-list');
   if (!container) return;
 
-  // Apply role filter so the Équipe tab respects the active role selection
+  // Appliquer le filtre de rôle pour que l'onglet Équipe respecte le rôle sélectionné
   var displayedUsers = currentFilterRole
     ? users.filter(function(u) { return userMatchesRole(u, currentFilterRole); })
     : users;
@@ -6946,7 +6946,7 @@ function openCategoriesModal() {
   html += '<div class="modal-header"><h3>🏷️ ' + t('manageCategories') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
   html += '<div class="modal-body">';
   
-  // Existing categories
+  // Catégories existantes
   html += '<div class="cf-list">';
   if (categories.length === 0) {
     html += '<div class="cf-empty-modal">' + t('noCategories') + '</div>';
@@ -6963,7 +6963,7 @@ function openCategoriesModal() {
   }
   html += '</div>';
   
-  // Add / edit category form
+  // Formulaire d'ajout / modification de catégorie
   html += '<div class="cf-add-form">';
   html += '<h4 id="cat-form-title">' + t('addCategory') + '</h4>';
   html += '<input type="hidden" id="edit-cat-id" value="" />';
@@ -7042,7 +7042,7 @@ async function getRoleChoicesFromGrist() {
   var roleSet = {};
   var hasGristChoices = false;
 
-  // Try to get choices defined in Grist column metadata (source of truth)
+  // Tenter de récupérer les choix définis dans les métadonnées de colonne Grist (source de vérité)
   try {
     var roleColName = getColumnName('users', 'role');
     var tablesData = await grist.docApi.fetchTable('_grist_Tables');
@@ -7076,18 +7076,18 @@ async function getRoleChoicesFromGrist() {
     console.log('Could not fetch role choices from Grist metadata:', e);
   }
 
-  // Add defaults only if no choices are defined yet (first-time setup)
+  // Ajouter les valeurs par défaut seulement si aucun choix n'est défini (première installation)
   if (!hasGristChoices) {
     ['admin', 'member', 'viewer'].forEach(function(r) { roleSet[r] = true; });
   }
 
-  // Always include roles currently assigned to users (so no user is orphaned)
+  // Toujours inclure les rôles actuellement assignés aux utilisateurs (aucun utilisateur orphelin)
   users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) roleSet[r] = true; }); });
 
   return Object.keys(roleSet).sort();
 }
 
-// In-memory state for the manage roles modal
+// État en mémoire pour la modale de gestion des rôles
 var _manageRolesState = { choices: [] };
 
 async function openManageRolesModal() {
@@ -7098,7 +7098,7 @@ async function openManageRolesModal() {
 
 function renderManageRolesModal() {
   var choices = _manageRolesState.choices;
-  // Build usage map: role -> count of users (ChoiceList-safe)
+  // Carte d'utilisation : rôle -> nombre d'utilisateurs (compatible ChoiceList)
   var usage = {};
   users.forEach(function(u) { getUserRoles(u).forEach(function(r) { if (r) usage[r] = (usage[r] || 0) + 1; }); });
 
@@ -7108,7 +7108,7 @@ function renderManageRolesModal() {
   html += '<div class="modal-body">';
   html += '<p style="color:#64748b;font-size:13px;margin:0 0 12px 0;">' + t('manageRolesSubtitle') + '</p>';
 
-  // Existing roles list
+  // Liste des rôles existants
   html += '<div class="settings-items">';
   if (choices.length === 0) {
     html += '<div style="text-align:center;color:#94a3b8;padding:20px;">--</div>';
@@ -7129,7 +7129,7 @@ function renderManageRolesModal() {
   }
   html += '</div>';
 
-  // Add new role
+  // Ajouter un nouveau rôle
   html += '<div style="display:flex;gap:8px;margin-top:16px;">';
   html += '<input type="text" id="new-role-name" placeholder="' + t('newRolePlaceholder') + '" style="flex:1;" onkeydown="if(event.key===\'Enter\'){addRoleChoice();}" />';
   html += '<button class="btn btn-primary btn-sm" onclick="addRoleChoice()">+ ' + t('addRole') + '</button>';
@@ -7158,7 +7158,7 @@ function addRoleChoice() {
 
 function removeRoleChoice(index) {
   var role = _manageRolesState.choices[index];
-  // Check if used
+  // Vérifier s'il est utilisé
   var inUse = users.some(function(u) { return userMatchesRole(u, role); });
   if (inUse) {
     if (!confirm(t('cannotDeleteUsedRole') + '. ' + (currentLang === 'fr' ? 'Continuer ?' : 'Continue?'))) {
@@ -7177,14 +7177,14 @@ async function saveRoleChoices() {
     var tablesData = await grist.docApi.fetchTable('_grist_Tables');
     var columnsData = await grist.docApi.fetchTable('_grist_Tables_column');
 
-    // Find table row id
+    // Trouver l'id de ligne dans la table
     var tableRowId = null;
     for (var i = 0; i < tablesData.id.length; i++) {
       if (tablesData.tableId[i] === USERS_TABLE) { tableRowId = tablesData.id[i]; break; }
     }
     if (tableRowId === null) throw new Error('Table not found');
 
-    // Find Role column and existing widgetOptions
+    // Trouver la colonne Role et les widgetOptions existants
     var existingOpts = {};
     for (var j = 0; j < columnsData.id.length; j++) {
       if (columnsData.parentId[j] === tableRowId && columnsData.colId[j] === roleColName) {
@@ -7196,7 +7196,7 @@ async function saveRoleChoices() {
       }
     }
 
-    // Update choices
+    // Mettre à jour les choix
     existingOpts.choices = _manageRolesState.choices;
     if (!existingOpts.widget) existingOpts.widget = 'TextBox';
 
@@ -7231,7 +7231,7 @@ async function openEditUserModal(userId) {
   html += '<div class="form-group"><label>' + t('fieldEmail') + '</label><input type="email" id="user-email" value="' + sanitize(user.Email) + '" /></div>';
   html += '<div class="form-row">';
   html += '<div class="form-group"><label>' + t('fieldRole') + '</label><select id="user-role">';
-  // Add current role first if it's not in the choices list
+  // Ajouter d'abord le rôle courant s'il n'est pas dans la liste des choix
   if (user.Role && roleChoices.indexOf(user.Role) === -1) {
     html += '<option value="' + sanitize(user.Role) + '" selected>' + sanitize(roleLabel(user.Role)) + '</option>';
   }
@@ -7439,7 +7439,7 @@ async function deleteGroup(groupId) {
 }
 
 // =============================================================================
-// MODALS
+// MODALES
 // =============================================================================
 
 function openNewTaskModal(defaultStatus) {
@@ -7460,7 +7460,7 @@ function openNewTaskModal(defaultStatus) {
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
 
-  // Top bar
+  // Barre supérieure
   html += '<div class="modal-detail-top">';
   html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
   html += '<span style="font-size:14px;font-weight:800;">' + t('modalNewTask') + '</span>';
@@ -7468,10 +7468,10 @@ function openNewTaskModal(defaultStatus) {
   html += '<button class="modal-close" onclick="closeModalForce()">✕</button>';
   html += '</div>';
 
-  // Content: left only for creation (no right panel summary yet)
+  // Contenu : panneau gauche seul pour la création (pas encore de panneau droit)
   html += '<div class="modal-detail-content" style="grid-template-columns:1fr;">';
 
-  // === LEFT PANEL ===
+  // === PANNEAU GAUCHE ===
   html += '<div class="modal-detail-left">';
   html += '<label class="detail-block-label" for="task-title">' + t('fieldTitle') + '</label>';
   html += '<input class="detail-title-input" type="text" id="task-title" placeholder="' + t('fieldTitle') + '" />';
@@ -7481,12 +7481,12 @@ function openNewTaskModal(defaultStatus) {
   html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t('fieldDescription') + '"></textarea></div>';
   html += '</div>';
 
-  // Duration
+  // Durée
   html += '<div class="detail-field">';
   html += '<div class="detail-field-value" style="display:flex;gap:10px;"><label style="display:inline-flex;align-items:center;gap:3px;"><input type="radio" name="task-duration" id="task-duration-journee" value="Journée" checked> Journée </label><label style="display:inline-flex;align-items:center;gap:5px;"><input type="radio" name="task-duration" id="task-duration-matin" value="Matin"> Matin </label><label style="display:inline-flex;align-items:center;gap:5px;"><input type="radio" name="task-duration" id="task-duration-apresmidi" value="Après-midi"> Après-midi</label></div>';
   html += '</div>';
 
-  // Assignees (multi) — or RACI roles
+  // Assignés (multiples) — ou rôles RACI
   if (raciEnabled) {
     html += renderRaciField('R', t('raciResponsible'), 'assignee', 'editAssignees');
     html += renderRaciField('A', t('raciAccountable'), 'accountable', 'editAccountable');
@@ -7511,7 +7511,7 @@ function openNewTaskModal(defaultStatus) {
     html += '</div></div>';
   }
 
-  // Status + Priority
+  // Statut + Priorité
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📊</span>';
@@ -7535,7 +7535,7 @@ function openNewTaskModal(defaultStatus) {
   html += '</select></div></div>';
   html += '</div>';
 
-  // Group
+  // Groupe
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">👥</span>';
   html += '<span class="detail-field-label">' + t('fieldGroup') + '</span>';
@@ -7557,7 +7557,7 @@ function openNewTaskModal(defaultStatus) {
   html += '</div>';
   html += '</div>';
 
-  // Project
+  // Projet
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
   var sortedProjects = projects.slice().sort(function(a, b) { return a.Name.localeCompare(b.Name); });
   for (var pi = 0; pi < sortedProjects.length; pi++) {
@@ -7570,7 +7570,7 @@ function openNewTaskModal(defaultStatus) {
   html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
   html += '</div>';
 
-  // Category
+  // Catégorie
   var newCategoryOptions = '<option value="">--</option>';
   for (var nci = 0; nci < categories.length; nci++) {
     newCategoryOptions += '<option value="' + sanitize(categories[nci].Name) + '">' + sanitize(categories[nci].Name) + '</option>';
@@ -7595,7 +7595,7 @@ function openNewTaskModal(defaultStatus) {
   html += '</div>'; // end left
   html += '</div>'; // end content
 
-  // Footer
+  // Pied de page
   html += '<div class="modal-detail-footer">';
   html += '<div></div>';
   html += '<div style="display:flex;gap:8px;">';
@@ -7755,7 +7755,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   var task = tasks.find(function(t) { return t.id === taskId; });
   if (!task) return;
 
-  // Set duration radio based on task.Duration (texte -> radio value)
+  // Définir le bouton radio de durée depuis task.Duration (texte -> valeur radio)
   var currentDurationRadio = getRadioValueFromDuration(task.Duration);
 
   if (!preserveAssignees) {
@@ -7774,17 +7774,17 @@ function openEditTaskModal(taskId, preserveAssignees) {
   var startVal = task.Start_Date ? new Date(task.Start_Date * 1000).toISOString().split('T')[0] : '';
   var dueVal = task.Due_Date ? new Date(task.Due_Date * 1000).toISOString().split('T')[0] : '';
 
-  // Progress calculation based on subtasks
+  // Calcul de progression basé sur les sous-tâches
   var progressPct = getTaskProgress(task);
   var barClass = progressPct === 100 ? 'bar-done' : (progressPct >= 50 ? 'bar-progress' : 'bar-todo');
 
-  // Priority dot color
+  // Couleur du point de priorité
   var dotColor = task.Priority === 'high' ? '#ef4444' : (task.Priority === 'medium' ? '#f59e0b' : '#22c55e');
 
   var html = '<div class="modal-overlay" onclick="closeModal(event)">';
   html += '<div class="modal modal-detail" onclick="event.stopPropagation()">';
 
-  // Top bar: group + status badge
+  // Barre supérieure : groupe + badge de statut
   html += '<div class="modal-detail-top">';
   html += '<span class="group-dot" style="background:' + dotColor + '"></span>';
   if (task.Group_Name) html += '<span style="font-size:12px;color:#64748b;">' + sanitize(task.Group_Name) + '</span>';
@@ -7794,10 +7794,10 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<button class="modal-close" onclick="closeModalForce()">✕</button>';
   html += '</div>';
 
-  // Content: left + right
+  // Contenu : gauche + droite
   html += '<div class="modal-detail-content">';
 
-  // === LEFT PANEL ===
+  // === PANNEAU GAUCHE ===
   html += '<div class="modal-detail-left">';
   html += '<label class="detail-block-label" for="task-title">' + t('fieldTitle') + '</label>';
   html += '<input class="detail-title-input" type="text" id="task-title" value="' + sanitize(task.Title) + '" placeholder="' + t('fieldTitle') + '" />';
@@ -7807,7 +7807,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><textarea id="task-desc" placeholder="' + t('fieldDescription') + '">' + sanitize(task.Description) + '</textarea></div>';
   html += '</div>';
 
-  // Duration
+  // Durée
   html += '<div class="detail-field">';
   var journeeChecked = (currentDurationRadio === 'Journée') ? ' checked' : '';
   var matinChecked = (currentDurationRadio === 'Matin') ? ' checked' : '';
@@ -7815,7 +7815,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value" style="display:flex;gap:10px;"><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-journee" value="Journée"' + journeeChecked + '> Journée </label><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-matin" value="Matin"' + matinChecked + '> Matin </label><label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><input type="radio" name="task-duration" id="task-duration-apresmidi" value="Après-midi"' + apresmidiChecked + '> Après-midi</label></div>';
   html += '</div>';
 
-  // Assignees (multi) — or RACI roles
+  // Assignés (multiples) — ou rôles RACI
   if (raciEnabled) {
     html += renderRaciField('R', t('raciResponsible'), 'assignee', 'editAssignees');
     html += renderRaciField('A', t('raciAccountable'), 'accountable', 'editAccountable');
@@ -7842,7 +7842,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '</div></div>';
   }
 
-  // Status
+  // Statut
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📊</span>';
   html += '<span class="detail-field-label">' + t('fieldStatus') + '</span>';
@@ -7868,7 +7868,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><input type="date" id="task-due" value="' + dueVal + '" /></div>';
   html += '</div>';
 
-  // Priority
+  // Priorité
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">🔥</span>';
   html += '<span class="detail-field-label">' + t('fieldPriority') + '</span>';
@@ -7878,14 +7878,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<option value="low"' + (task.Priority === 'low' ? ' selected' : '') + '>' + t('priorityLow') + '</option>';
   html += '</select></div></div>';
 
-  // Group
+  // Groupe
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">👥</span>';
   html += '<span class="detail-field-label">' + t('fieldGroup') + '</span>';
   html += '<div class="detail-field-value"><select id="task-group">' + groupOptions + '</select></div>';
   html += '</div>';
 
-  // Project
+  // Projet
   var projectOptions = '<option value="">' + t('noProject') + '</option>';
   var sortedProjects = projects.slice().sort(function(a, b) { return a.Name.localeCompare(b.Name); });
   for (var pi = 0; pi < sortedProjects.length; pi++) {
@@ -7898,7 +7898,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
   html += '</div>';
 
-  // Category
+  // Catégorie
   var categoryOptions = '<option value="">--</option>';
   for (var ci = 0; ci < categories.length; ci++) {
     var catSel = categories[ci].Name === task.Category ? ' selected' : '';
@@ -7923,7 +7923,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
 
 /* Pour ne pas afficher la sous-fenêtre des sous-taches dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
-  // === SUBTASKS SECTION ===
+  // === SECTION SOUS-TÂCHES ===
   var taskSubtasks = getTaskSubtasks(task.id);
   html += '<div class="subtasks-section">';
   html += '<div class="subtasks-header">';
@@ -7943,14 +7943,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
       var stDueDateStr = st.Due_Date ? new Date(st.Due_Date * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
       var stDueClass = (st.Due_Date && !st.Completed && st.Due_Date < Math.floor(Date.now() / 1000)) ? ' st-overdue' : '';
       html += '<div class="subtask-item' + (st.Completed ? ' completed' : '') + (stBlocked ? ' blocked' : '') + '" data-id="' + st.id + '" id="st-row-' + st.id + '">';
-      // Normal view
+      // Vue normale
       html += '<div class="subtask-view" id="st-view-' + st.id + '">';
       html += '<input type="checkbox" class="subtask-checkbox" ' + (st.Completed ? 'checked' : '') + (stBlocked ? ' disabled' : '') + ' onchange="toggleSubtask(' + st.id + ', this.checked)" />';
       html += '<span class="subtask-title">' + sanitize(st.Title) + '</span>';
       if (stBlocked && stBlocker) {
         html += '<span class="subtask-blocked-badge" title="' + t('blockedBy') + ' ' + sanitize(stBlocker.Title) + '">🔒</span>';
       }
-      // Meta : status + priority + assignee + due date
+      // Méta : statut + priorité + assigné + date d'échéance
       html += '<span class="subtask-meta">';
       if (st.Status && st.Status !== 'todo') {
         var stStatusColor = st.Status === 'done' ? '#22c55e' : '#f59e0b';
@@ -7979,7 +7979,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
       html += '<button class="subtask-dep-btn" onclick="openSubtaskDepModal(' + st.id + ', ' + task.id + ')" title="' + t('dependencies') + '">🔗</button>';
       html += '<button class="subtask-delete" onclick="deleteSubtask(' + st.id + ', ' + task.id + ')" title="' + t('delete') + '">✕</button>';
       html += '</div>';
-      // Edit view (hidden by default)
+      // Vue édition (masquée par défaut)
       // Assignés multiples : liste de cases à cocher (comme les tâches, séparés par virgule)
       var stAssignees = (st.Assignee || '').split(',').map(function(a) { return a.trim(); }).filter(Boolean);
       var assigneeListHtml = '<div class="st-assignee-list" id="st-assignee-' + st.id + '" style="display:flex;flex-wrap:wrap;gap:4px 10px;max-height:84px;overflow-y:auto;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;">';
@@ -7999,7 +7999,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
       var stLbl = { todo: t('statusTodo'), progress: t('statusProgress'), done: t('statusDone') };
       var prLbl = { high: t('priorityHigh'), medium: t('priorityMedium'), low: t('priorityLow') };
       html += '<div class="subtask-edit-form" id="st-edit-' + st.id + '">';
-      // Title
+      // Titre
       html += '<input type="text" class="subtask-edit-title" id="st-title-' + st.id + '" value="' + sanitize(st.Title) + '" placeholder="' + (currentLang === 'fr' ? 'Titre de la sous-tâche...' : 'Subtask title...') + '">';
       // Description
       html += '<textarea class="subtask-edit-title" id="st-desc-' + st.id + '" rows="2" placeholder="' + (currentLang === 'fr' ? 'Description (optionnel)...' : 'Description (optional)...') + '" style="resize:vertical;">' + sanitize(st.Description || '') + '</textarea>';
@@ -8024,7 +8024,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
       html += '</div>';
       html += '<input type="hidden" id="st-status-' + st.id + '" value="' + stStatus + '">';
       html += '</div>';
-      // Priority pills
+      // Pastilles de priorité
       html += '<div>';
       html += '<div class="st-pill-label">' + (currentLang === 'fr' ? 'Priorité' : 'Priority') + '</div>';
       html += '<div class="st-pill-group" id="st-priority-group-' + st.id + '">';
@@ -8042,14 +8042,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
       }
       html += assigneeListHtml;
       html += '</div>';
-      // Date + hours row
+      // Ligne date + heures
       html += '<div class="st-meta-row">';
       var stStartDateInput = st.Start_Date ? new Date(st.Start_Date * 1000).toISOString().split('T')[0] : '';
       html += '<input type="date" class="subtask-edit-date" id="st-start-' + st.id + '" value="' + stStartDateInput + '" title="' + (currentLang === 'fr' ? 'Date début' : 'Start date') + '">';
       html += '<input type="date" class="subtask-edit-date" id="st-due-' + st.id + '" value="' + stDueDateInput + '" title="' + (currentLang === 'fr' ? 'Échéance' : 'Due date') + '">';
       html += '<input type="number" class="st-hours-input" id="st-hours-' + st.id + '" value="' + (st.Estimated_Hours || '') + '" placeholder="' + (currentLang === 'fr' ? 'Heures' : 'Hours') + '" min="0" step="0.5">';
       html += '</div>';
-      // Recurrence
+      // Récurrence
       var stRecur = st.Recurrence || 'none';
       html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
       html += '<span style="font-size:11px;color:#64748b;">🔄 ' + (currentLang === 'fr' ? 'Récurrence' : 'Recurrence') + '</span>';
@@ -8074,7 +8074,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
 
-  // Add subtask input
+  // Champ d'ajout de sous-tâche
   html += '<div class="subtask-add-row">';
   html += '<input type="text" id="new-subtask-input" class="subtask-input" placeholder="' + t('subtaskPlaceholder') + '" onkeypress="if(event.key===\'Enter\')addSubtask(' + task.id + ')" />';
   html += '<button class="subtask-add-btn" onclick="addSubtask(' + task.id + ')">+</button>';
@@ -8083,7 +8083,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   */  // fin pour ne pas afficher la sous-fenêtre des sous-taches dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
 
   /*  // fin pour ne pas afficher la sous-fenêtre des dépendance dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
-  // === DEPENDENCIES SECTION ===
+  // === SECTION DÉPENDANCES ===
   var taskDeps = getTaskDependencies(task.id);
   var taskBlocks = getTasksDependingOn(task.id);
   html += '<div class="dependencies-section">';
@@ -8092,7 +8092,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<span class="detail-field-label">' + t('dependencies') + '</span>';
   html += '</div>';
   
-  // Blocked by
+  // Bloquée par
   html += '<div class="dep-subsection">';
   html += '<div class="dep-label">' + t('blockedBy') + ':</div>';
   if (taskDeps.length === 0) {
@@ -8112,7 +8112,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
   
-  // Blocks (tasks depending on this one)
+  // Bloque (tâches dépendant de celle-ci)
   if (taskBlocks.length > 0) {
     html += '<div class="dep-subsection">';
     html += '<div class="dep-label">' + t('blocks') + ':</div>';
@@ -8127,7 +8127,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '</div>';
   }
   
-  // Add dependency
+  // Ajouter une dépendance
   html += '<div class="dep-add-row">';
   html += '<select id="dep-select" onchange="if (this.value) addDependency(' + task.id + ')">';
   html += '<option value="">-- ' + t('selectTask') + ' --</option>';
@@ -8144,7 +8144,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
 */  // fin pour ne pas afficher la sous-fenêtre des dépendance dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
 
 /* Pour ne pas afficher la sous-fenêtre des champs personnalisés dans l'éditeur de tâche - A supprimer si besoin des champs personnalisés dans l'éditeur
-  // === CUSTOM FIELDS SECTION ===
+  // === SECTION CHAMPS PERSONNALISÉS ===
   if (customFields.length > 0) {
     html += '<div class="custom-fields-section">';
     html += '<div class="custom-fields-header">';
@@ -8176,7 +8176,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
 */   // fin pour ne pas afficher la sous-fenêtre des champs personnalisés dans l'éditeur de tâche - A supprimer si besoin des champs personnalisés dans l'éditeur
 
   /* Pour ne pas afficher la sous-fenêtre des pièces jointes dans l'éditeur de tâche - A supprimer si besoin des pièces jointes dans l'éditeur
-  // === ATTACHMENTS SECTION (D2) ===
+  // === SECTION PIÈCES JOINTES (D2) ===
   html += '<div class="attachments-section">';
   html += '<div class="comments-header">';
   html += '<span class="detail-field-icon">📎</span>';
@@ -8192,7 +8192,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
   */ // fin pour ne pas afficher la sous-fenêtre des pièces jointes dans l'éditeur de tâche - A supprimer si besoin des pièces jointes dans l'éditeur
 
-  // === COMMENTS SECTION ===
+  // === SECTION COMMENTAIRES ===
   var taskComments = getTaskComments(task.id);
   html += '<div class="comments-section">';
   html += '<div class="comments-header">';
@@ -8219,7 +8219,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
   
-  // Add comment input
+  // Champ d'ajout de commentaire
   html += '<div class="comment-add-row">';
   html += '<textarea id="new-comment-input" class="comment-input" placeholder="' + t('commentPlaceholder') + '" rows="2"></textarea>';
   html += '<button class="comment-add-btn" onclick="addComment(' + task.id + ')">' + t('addComment') + '</button>';
@@ -8228,10 +8228,10 @@ function openEditTaskModal(taskId, preserveAssignees) {
 
   html += '</div>'; // end left
 
-  // === RIGHT PANEL ===
+  // === PANNEAU DROIT ===
   html += '<div class="modal-detail-right">';
 
-  // Progression card
+  // Carte progression
   html += '<div class="detail-card">';
   html += '<h4>⏳ ' + t('progression') + '</h4>';
   html += '<div class="detail-info-row"><span class="info-label">' + t('advancement') + '</span><span class="info-value">' + progressPct + '%</span></div>';
@@ -8240,7 +8240,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-info-row"><span class="info-label">' + t('dueLabel') + '</span><span class="info-value" style="' + (isOverdue(task) ? 'color:#dc2626;' : '') + '">' + (dueVal ? formatDate(task.Due_Date) : '--') + (isOverdue(task) ? ' ⚠️' : '') + '</span></div>';
   html += '</div>';
 
-  // Quick actions card
+  // Carte actions rapides
   html += '<div class="detail-card">';
   html += '<h4>⚡ ' + t('quickActions') + '</h4>';
   if (task.Status === 'done') {
@@ -8254,7 +8254,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
 
-  // Summary card
+  // Carte résumé
   html += '<div class="detail-card">';
   html += '<h4>📋 ' + t('taskSummary') + '</h4>';
   html += '<div class="detail-info-row"><span class="info-label">' + t('fieldStatus') + ' :</span><span class="info-value" style="color:' + (task.Status === 'done' ? '#22c55e' : (task.Status === 'progress' ? '#3b82f6' : '#f59e0b')) + '">' + statusLabel(task.Status) + '</span></div>';
@@ -8263,7 +8263,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
 
   /* Pour ne pas afficher la sous-fenêtre du suivi du temps dans l'éditeur de tâche - A supprimer si besoin du suivi du temps dans l'éditeur
-  // Time Tracking card
+  // Carte suivi du temps
   var totalTime = getTaskTotalTime(task.id);
   var isTimerRunning = !!activeTimers[task.id];
   var taskTimeEntries = getTaskTimeEntries(task.id);
@@ -8271,7 +8271,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<h4>⏱️ ' + t('timeTracking') + '</h4>';
   
   
-  // Timer button
+  // Bouton minuteur
   html += '<div class="timer-control">';
   if (isTimerRunning) {
     html += '<button class="timer-btn timer-stop" onclick="stopTimer(' + task.id + ')">⏹️ ' + t('stopTimer') + '</button>';
@@ -8281,14 +8281,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
   
-  // Manual time entry
+  // Saisie manuelle du temps
   html += '<div class="manual-time-entry" style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">';
   html += '<input type="number" id="manual-hours" min="0" max="99" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === 'fr' ? 'Heures' : 'Hours') + '"> h';
   html += '<input type="number" id="manual-minutes" min="0" max="59" placeholder="0" style="width:52px;" class="form-input" title="' + (currentLang === 'fr' ? 'Minutes' : 'Minutes') + '"> min';
   html += '<button class="btn btn-secondary btn-sm" onclick="addManualTimeEntry(' + task.id + ')">+ ' + (currentLang === 'fr' ? 'Ajouter' : 'Add') + '</button>';
   html += '</div>';
 
-  // Time summary
+  // Résumé du temps
   html += '<div class="time-summary">';
   html += '<div class="detail-info-row"><span class="info-label">' + t('totalTime') + ' :</span><span class="info-value time-value">' + formatDuration(totalTime) + '</span></div>';
   if (task.Estimated_Hours) {
@@ -8298,7 +8298,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   }
   html += '</div>';
   
-  // Recent time entries (newest first)
+  // Entrées de temps récentes (les plus récentes en premier)
   if (taskTimeEntries.length > 0) {
     html += '<div class="time-entries">';
     html += '<div class="time-entries-label">' + t('timeEntries') + ':</div>';
@@ -8317,7 +8317,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
 */   // fin pour ne pas afficher la sous-fenêtre du suivi du temps dans l'éditeur de tâche - A supprimer si besoin du suivi du temps dans l'éditeur
 
 /* Pour ne pas afficher la sous-fenêtre de l'extension dans l'éditeur de tâche - A supprimer si besoin de l'extension dans l'éditeur
-  // Extension card
+  // Carte extension
   html += '<div class="detail-card">';
   html += '<h4>📏 ' + t('extensionDate') + '</h4>';
   var extDateVal = task.Extension_Date ? fromEpoch(task.Extension_Date) : '';
@@ -8329,7 +8329,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>';
   */   // fin pour ne pas afficher la sous-fenêtre de l'extension dans l'éditeur de tâche - A supprimer si besoin de l'extension dans l'éditeur
 
-  // Recurrence card
+  // Carte récurrence
   var hasRecurrence = task.Recurrence && task.Recurrence !== 'none';
   html += '<div class="detail-card">';
   html += '<h4>🔄 ' + t('recurrence') + '</h4>';
@@ -8354,7 +8354,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '</div>'; // end right
   html += '</div>'; // end content
 
-  // Footer
+  // Pied de page
   html += '<div class="modal-detail-footer">';
   if (isOwner) html += '<button class="btn-danger" onclick="deleteTask(' + task.id + ')">' + t('delete') + '</button>';
   else html += '<div></div>';
@@ -8521,7 +8521,7 @@ async function quickAction(taskId, newStatus) {
     }
     showToast(t('taskMoved'), 'success');
     
-    // Create next occurrence if task is recurring and just completed
+    // Créer l'occurrence suivante si la tâche est récurrente et vient d'être terminée
     if (newStatus === 'done' && wasNotDone && task && task.Recurrence && task.Recurrence !== 'none') {
       await createNextOccurrence(task);
     }
@@ -8534,7 +8534,7 @@ async function quickAction(taskId, newStatus) {
 }
 
 // =============================================================================
-// SUBTASKS CRUD
+// CRUD SOUS-TÂCHES
 // =============================================================================
 
 /**
@@ -8682,7 +8682,7 @@ async function deleteSubtask(subtaskId, parentTaskId) {
   }
 }
 
-// Toggle pill selection for status/priority
+// Basculer la sélection de pastille pour statut/priorité
 // Sélecteur de statut de sous-tâche (statuts personnalisés avec couleur réelle)
 function setStStatus(subtaskId, value, btn) {
   var hidden = document.getElementById('st-status-' + subtaskId);
@@ -8848,7 +8848,7 @@ async function generateSubtaskOccurrences(subtaskId, parentTaskId) {
 }
 
 // =============================================================================
-// DEPENDENCIES CRUD
+// CRUD DÉPENDANCES
 // =============================================================================
 
 async function addDependency(taskId) {
@@ -8914,7 +8914,7 @@ async function removeDependency(taskId, dependsOnTaskId) {
 }
 
 // =============================================================================
-// COMMENTS CRUD
+// CRUD COMMENTAIRES
 // =============================================================================
 
 async function addComment(taskId) {
@@ -8980,7 +8980,7 @@ async function deleteComment(commentId, taskId) {
 }
 
 // =============================================================================
-// TIME TRACKING
+// SUIVI DU TEMPS
 // =============================================================================
 
 async function startTimer(taskId) {
@@ -9056,7 +9056,7 @@ async function addManualTimeEntry(taskId) {
 }
 
 // =============================================================================
-// CUSTOM FIELDS
+// CHAMPS PERSONNALISÉS
 // =============================================================================
 
 function renderCustomFieldInput(field, taskId, value) {
@@ -9125,7 +9125,7 @@ function openCustomFieldsModal() {
   html += '<div class="modal-header"><h3>🏷️ ' + t('manageCustomFields') + '</h3><button class="modal-close" onclick="closeModalForce()">✕</button></div>';
   html += '<div class="modal-body">';
   
-  // Existing fields
+  // Champs existants
   html += '<div class="cf-list">';
   if (customFields.length === 0) {
     html += '<div class="cf-empty-modal">' + t('noCustomFields') + '</div>';
@@ -9141,7 +9141,7 @@ function openCustomFieldsModal() {
   }
   html += '</div>';
   
-  // Add new field form
+  // Formulaire d'ajout de champ
   html += '<div class="cf-add-form">';
   html += '<h4>' + t('addCustomField') + '</h4>';
   html += '<div class="cf-form-row">';
@@ -9202,14 +9202,14 @@ async function deleteCustomField(fieldId) {
   if (!isOwner) return;
   
   try {
-    // Delete field values first
+    // Supprimer d'abord les valeurs du champ
     var valuesToDelete = customFieldValues.filter(function(v) { return v.Field_Id === fieldId; });
     for (var i = 0; i < valuesToDelete.length; i++) {
       await grist.docApi.applyUserActions([
         ['RemoveRecord', CUSTOM_FIELD_VALUES_TABLE, valuesToDelete[i].id]
       ]);
     }
-    // Delete field
+    // Supprimer le champ
     await grist.docApi.applyUserActions([
       ['RemoveRecord', CUSTOM_FIELDS_TABLE, fieldId]
     ]);
@@ -9222,7 +9222,7 @@ async function deleteCustomField(fieldId) {
 }
 
 // =============================================================================
-// RECURRENCE HANDLING
+// GESTION DE LA RÉCURRENCE
 // =============================================================================
 
 // Génère toutes les occurrences d'une tâche récurrente sur le mois ou l'année en cours.
@@ -9442,11 +9442,11 @@ function closeModalForce() {
 }
 
 // =============================================================================
-// CRUD OPERATIONS
+// OPÉRATIONS CRUD
 // =============================================================================
 
 // ============================================================
-// Helper functions for task duration (Journée/Matin/Après-midi)
+// Fonctions utilitaires pour la durée des tâches (Journée/Matin/Après-midi)
 // Stocke directement le texte dans la colonne Duration
 // ============================================================
 function getDurationFromRadio() {
@@ -9495,10 +9495,10 @@ async function createTask() {
   // B4 : prolongation auto activée par défaut sur les nouvelles tâches (modifiable ensuite)
   record.Auto_Extend = true;
 
-  // Duration from radio buttons (stored as text: Journée/Matin/Après-midi)
+  // Durée depuis les boutons radio (stockée en texte : Journée/Matin/Après-midi)
   setField(record, 'tasks', 'duration', getDurationFromRadio());
 
-  // Add Tag only if the element exists
+  // Ajouter le Tag seulement si l'élément existe
   var tagEl = document.getElementById('task-tag');
   if (tagEl) {
     setField(record, 'tasks', 'tag', tagEl.value.trim());
@@ -9580,10 +9580,10 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
 
-  // Duration from radio buttons (stored as text: Journée/Matin/Après-midi)
+  // Durée depuis les boutons radio (stockée en texte : Journée/Matin/Après-midi)
   setField(record, 'tasks', 'duration', getDurationFromRadio());
   
-  // Add Tag only if the element exists
+  // Ajouter le Tag seulement si l'élément existe
   var tagEl = document.getElementById('task-tag');
   if (tagEl) {
     setField(record, 'tasks', 'tag', tagEl.value.trim());
@@ -9595,7 +9595,7 @@ async function updateTask(taskId) {
   var autoExtEl = document.getElementById('task-auto-extend');
   if (autoExtEl) record.Auto_Extend = autoExtEl.checked;
 
-  // Auto-freeze extension date when completing a task with auto-extend
+  // Figer automatiquement la date d'extension en terminant une tâche avec prolongation auto
   if (newStatus === 'done' && task && task.Auto_Extend && task.Status !== 'done') {
     record.Extension_Date = Math.floor(Date.now() / 1000);
     record.Auto_Extend = false;
@@ -9625,7 +9625,7 @@ async function updateTask(taskId) {
     if (raciEnabled) concernedUpd = concernedUpd.concat(editAccountable, editConsulted, editInformed);
     await notifyConcernedUsers(taskId, concernedUpd, 'task_updated', title);
 
-    // Create next occurrence if task is recurring and just completed
+    // Créer l'occurrence suivante si la tâche est récurrente et vient d'être terminée
     if (newStatus === 'done' && wasNotDone && newRecurrence && newRecurrence !== 'none') {
       var updatedTask = Object.assign({}, task, record);
       await createNextOccurrence(updatedTask);
@@ -9756,7 +9756,7 @@ async function useTemplate(tplId) {
 }
 
 // =============================================================================
-// WIDGET PERMISSIONS (centralized via Widget_Registry + Widget_Permissions)
+// PERMISSIONS DU WIDGET (centralisées via Widget_Registry + Widget_Permissions)
 // =============================================================================
 
 var WIDGET_ID = 'grist-project-manager';
@@ -9844,12 +9844,12 @@ function applyOwnerRestrictions() {
 }
 
 // =============================================================================
-// STATS VIEW
+// VUE STATISTIQUES
 // =============================================================================
 
 function renderStatsView() {
   var filteredTasks = getFilteredTasks();
-  // Status chart (dynamic based on custom statuses)
+  // Graphique des statuts (dynamique, basé sur les statuts personnalisés)
   var kanbanStatuses = getKanbanStatuses();
   var statusCounts = {};
   kanbanStatuses.forEach(function(s) { statusCounts[s.key] = 0; });
@@ -9869,7 +9869,7 @@ function renderStatsView() {
   });
   document.getElementById('chart-status').innerHTML = statusHtml;
 
-  // Priority chart
+  // Graphique des priorités
   var priorityCounts = { high: 0, medium: 0, low: 0 };
   filteredTasks.forEach(function(t) { priorityCounts[t.Priority] = (priorityCounts[t.Priority] || 0) + 1; });
   var maxPriority = Math.max(priorityCounts.high, priorityCounts.medium, priorityCounts.low, 1);
@@ -9887,7 +9887,7 @@ function renderStatsView() {
   });
   document.getElementById('chart-priority').innerHTML = priorityHtml;
 
-  // Assignee chart
+  // Graphique des assignés
   var assigneeCounts = {};
   filteredTasks.forEach(function(t) {
     if (t.Assignee) {
@@ -9915,7 +9915,7 @@ function renderStatsView() {
   }
   document.getElementById('chart-assignee').innerHTML = assigneeHtml;
 
-  // Week chart (tasks active or due this week by day)
+  // Graphique de la semaine (tâches actives ou dues cette semaine, par jour)
   var weekDays = currentLang === 'fr' ? ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   var now = new Date();
   var dayOfWeek = now.getDay();
@@ -9951,14 +9951,14 @@ function renderStatsView() {
   });
   document.getElementById('chart-week').innerHTML = weekHtml;
 
-  // Summary stats
+  // Statistiques résumées
   var completionRate = filteredTasks.length > 0 ? Math.round((statusCounts.done / filteredTasks.length) * 100) : 0;
   document.getElementById('stats-completion-rate').textContent = completionRate + '%';
   
   var overdueCount = getOverdueTasks().length;
   document.getElementById('stats-overdue-count').textContent = overdueCount;
   
-  // Calculate total time from time entries
+  // Calculer le temps total depuis les entrées de temps
   var totalMinutes = 0;
   timeEntries.forEach(function(te) {
     if (te.Duration) totalMinutes += te.Duration;
@@ -9970,7 +9970,7 @@ function renderStatsView() {
   var avgHours = Math.round(avgMinutes / 60 * 10) / 10;
   document.getElementById('stats-avg-time').textContent = avgHours + 'h';
 
-  // Workload chart - Risk of overload per user
+  // Graphique de charge - risque de surcharge par utilisateur
   renderWorkloadChart();
   renderBurndownChart();
   renderActivityLog();
@@ -9981,7 +9981,7 @@ function renderWorkloadChart() {
   var now = Math.floor(Date.now() / 1000);
   var filteredTasks = getFilteredTasks();
   
-  // Calculate workload for each assignee
+  // Calculer la charge de travail de chaque assigné
   filteredTasks.forEach(function(task) {
     if (task.Assignee && task.Status !== 'done') {
       task.Assignee.split(',').forEach(function(a) {
@@ -10009,9 +10009,9 @@ function renderWorkloadChart() {
     }
   });
 
-  // Calculate risk score for each user
-  // Score = (tasks * 10) + (overdue * 30) + (highPriority * 15)
-  // Risk levels: 0-50 = low, 51-100 = medium, >100 = high
+  // Calculer le score de risque de chaque utilisateur
+  // Score = (tâches * 10) + (retards * 30) + (haute priorité * 15)
+  // Niveaux de risque : 0-50 = faible, 51-100 = moyen, >100 = élevé
   var workloadEntries = Object.entries(workloadData).map(function(entry) {
     var name = entry[0];
     var data = entry[1];
@@ -10058,7 +10058,7 @@ function renderWorkloadChart() {
 
   document.getElementById('chart-workload').innerHTML = html;
 
-  // Populate agent filter and render timeline
+  // Remplir le filtre d'agent et afficher la timeline
   var agentSelect = document.getElementById('timeline-agent');
   if (agentSelect) {
     var agentNames = Object.keys(workloadData).sort();
@@ -10087,7 +10087,7 @@ function renderTimelineChart() {
     ? ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
     : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (period === 'weeks') {
-    // Show 4 past weeks + current + 3 future = 8 weeks
+    // Afficher 4 semaines passées + la courante + 3 futures = 8 semaines
     var dayOfW = now.getDay();
     var offToMon = dayOfW === 0 ? -6 : 1 - dayOfW;
     var thisMon = new Date(now); thisMon.setDate(thisMon.getDate() + offToMon);
@@ -10098,7 +10098,7 @@ function renderTimelineChart() {
       slots.push({ label: wStart.getDate() + '/' + (wStart.getMonth() + 1), start: Math.floor(wStart.getTime() / 1000), end: Math.floor(wEnd.getTime() / 1000), current: isCurrentW });
     }
   } else {
-    // Show 3 past months + current + 2 future = 6 months
+    // Afficher 3 mois passés + le courant + 2 futurs = 6 mois
     for (var m = -3; m < 3; m++) {
       var d = new Date(now.getFullYear(), now.getMonth() + m, 1);
       var dEnd = new Date(now.getFullYear(), now.getMonth() + m + 1, 0, 23, 59, 59, 999);
@@ -10106,7 +10106,7 @@ function renderTimelineChart() {
     }
   }
 
-  // Collect tasks per slot per agent (overlap-based: task active during slot)
+  // Collecter les tâches par créneau et par agent (chevauchement : tâche active durant le créneau)
   var agentColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
   var allAgents = [];
   var filteredTasks = getFilteredTasks().filter(function(t) { return t.Status !== 'done'; });
@@ -10122,7 +10122,7 @@ function renderTimelineChart() {
 
   var visibleAgents = agentFilter ? [agentFilter] : allAgents;
 
-  // Build data[slot][agent] = count (task active = overlaps slot)
+  // Construire data[slot][agent] = nombre (tâche active = chevauche le créneau)
   var data = slots.map(function(slot) {
     var row = { label: slot.label, total: 0, current: slot.current };
     visibleAgents.forEach(function(agent) { row[agent] = 0; });
@@ -10170,7 +10170,7 @@ function renderTimelineChart() {
   });
   html += '</div>';
 
-  // Legend
+  // Légende
   if (visibleAgents.length > 1) {
     html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">';
     visibleAgents.forEach(function(agent, idx) {
@@ -10237,7 +10237,7 @@ function renderBurndownChart() {
 
   html += '<div style="position:relative;height:' + (chartH + 30) + 'px;">';
 
-  // Ideal line (from max remaining at start to 0)
+  // Ligne idéale (du reste max au départ jusqu'à 0)
   var startRemaining = remaining[0] || 0;
   var svgW = labels.length * (barW + 8);
   html += '<svg style="position:absolute;top:0;left:0;width:' + svgW + 'px;height:' + chartH + 'px;pointer-events:none;">';
@@ -10252,7 +10252,7 @@ function renderBurndownChart() {
   }
   html += '</svg>';
 
-  // Bars
+  // Barres
   html += '<div style="display:flex;align-items:flex-end;gap:8px;height:' + chartH + 'px;">';
   for (var bi = 0; bi < labels.length; bi++) {
     var remH = (remaining[bi] / maxVal) * (chartH - 20);
@@ -10267,7 +10267,7 @@ function renderBurndownChart() {
   }
   html += '</div>';
 
-  // Labels
+  // Étiquettes
   html += '<div style="display:flex;gap:8px;margin-top:4px;">';
   for (var lbi = 0; lbi < labels.length; lbi++) {
     html += '<div style="width:' + barW + 'px;text-align:center;font-size:9px;color:#94a3b8;">' + labels[lbi] + '</div>';
@@ -10279,7 +10279,7 @@ function renderBurndownChart() {
 }
 
 // =============================================================================
-// ACTIVITY LOG
+// JOURNAL D'ACTIVITÉ
 // =============================================================================
 
 async function logActivity(action, taskId, taskTitle, details) {
@@ -10370,7 +10370,7 @@ function renderActivityLog() {
 }
 
 // =============================================================================
-// PROJECT MANAGEMENT
+// GESTION DES PROJETS
 // =============================================================================
 
 // Remplit le sélecteur "Responsable" avec les utilisateurs (et présélectionne)
@@ -10574,7 +10574,7 @@ async function deleteProject(projectId) {
 }
 
 // =============================================================================
-// SETTINGS VIEW
+// VUE PARAMÈTRES
 // =============================================================================
 
 function renderSettingsView() {
@@ -10766,7 +10766,7 @@ async function toggleCardDisplay(key, value) {
 }
 
 // =============================================================================
-// SECURITY — ACL RULES FOR PM_* TABLES
+// SÉCURITÉ — RÈGLES ACL POUR LES TABLES PM_*
 // =============================================================================
 
 var PM_ACL_RULES = [
@@ -11032,7 +11032,7 @@ async function toggleNotifyConcerned(enabled) {
   showToast(currentLang === 'fr' ? (enabled ? 'Notifications activées' : 'Notifications désactivées') : (enabled ? 'Notifications enabled' : 'Notifications disabled'), 'success');
 }
 
-// --- Automations Settings UI ---
+// --- Interface des paramètres d'automatisation ---
 
 var TRIGGER_LABELS = {
   status_change: 'triggerStatusChange',
@@ -11352,7 +11352,7 @@ function renderSettingsProjectsList(searchOverride) {
     html += '</div>';
   }
   container.innerHTML = html;
-  // Restore cursor position in search input
+  // Restaurer la position du curseur dans le champ de recherche
   var inp = document.getElementById('settings-proj-search');
   if (inp && searchOverride !== undefined) { var l = inp.value.length; inp.setSelectionRange(l, l); inp.focus(); }
 }
@@ -11493,7 +11493,7 @@ function closeTagsModal() {
 }
 
 // =============================================================================
-// COLUMN MAPPING CONFIGURATION
+// CONFIGURATION DU MAPPAGE DE COLONNES
 // =============================================================================
 
 async function openColumnMappingModal() {
@@ -11511,7 +11511,7 @@ async function openColumnMappingModal() {
   html += 'Utile si vous avez déjà des données et souhaitez les réutiliser avec ce widget.';
   html += '</p></div>';
   
-  // Get available tables
+  // Obtenir les tables disponibles
   var availableTables = [];
   try {
     availableTables = await grist.docApi.listTables();
@@ -11519,7 +11519,7 @@ async function openColumnMappingModal() {
     console.error('Error listing tables:', e);
   }
   
-  // Tasks mapping section
+  // Section mapping des tâches
   html += '<div class="form-section" style="margin-bottom:25px;">';
   html += '<h4 style="margin-bottom:15px;color:#1e293b;">📋 Table des Tâches</h4>';
   html += '<div class="form-group">';
@@ -11534,7 +11534,7 @@ async function openColumnMappingModal() {
   html += '<div id="tasks-columns-mapping"></div>';
   html += '</div>';
   
-  // Users mapping section
+  // Section mapping des utilisateurs
   html += '<div class="form-section" style="margin-bottom:25px;">';
   html += '<h4 style="margin-bottom:15px;color:#1e293b;">👥 Table des Utilisateurs</h4>';
   html += '<div class="form-group">';
@@ -11549,7 +11549,7 @@ async function openColumnMappingModal() {
   html += '<div id="users-columns-mapping"></div>';
   html += '</div>';
   
-  // Projects mapping section
+  // Section mapping des projets
   html += '<div class="form-section" style="margin-bottom:25px;">';
   html += '<h4 style="margin-bottom:15px;color:#1e293b;">📂 Table des Projets</h4>';
   html += '<div class="form-group">';
@@ -11573,7 +11573,7 @@ async function openColumnMappingModal() {
   
   document.getElementById('modal-container').innerHTML = html;
   
-  // Load current column mappings
+  // Charger les mappings de colonnes actuels
   await detectTaskColumns();
   await detectUserColumns();
   await detectProjectColumns();
@@ -11702,10 +11702,10 @@ async function detectProjectColumns() {
 
 async function saveColumnMapping() {
   try {
-    // Collect all mappings
+    // Collecter tous les mappings
     var updates = [];
     
-    // Tasks mappings
+    // Mappings des tâches
     var tasksTable = document.getElementById('mapping-tasks-table').value;
     var taskFields = ['title', 'description', 'status', 'priority', 'assignee', 'group', 'startDate', 'dueDate', 'category', 'tag', 'recurrence', 'estimatedHours', 'createdAt', 'projectId'];
     for (var i = 0; i < taskFields.length; i++) {
@@ -11717,7 +11717,7 @@ async function saveColumnMapping() {
       }
     }
     
-    // Users mappings
+    // Mappings des utilisateurs
     var usersTable = document.getElementById('mapping-users-table').value;
     var userFields = ['name', 'email', 'role', 'group'];
     for (var i = 0; i < userFields.length; i++) {
@@ -11729,7 +11729,7 @@ async function saveColumnMapping() {
       }
     }
     
-    // Projects mappings
+    // Mappings des projets
     var projectsTable = document.getElementById('mapping-projects-table').value;
     var projectFields = ['name', 'description', 'color', 'status'];
     for (var i = 0; i < projectFields.length; i++) {
@@ -11741,7 +11741,7 @@ async function saveColumnMapping() {
       }
     }
     
-    // Update PM_Config table (update existing, add missing)
+    // Mettre à jour la table PM_Config (mise à jour de l'existant, ajout du manquant)
     var configData = await grist.docApi.fetchTable(CONFIG_TABLE);
     var actions = [];
     for (var i = 0; i < updates.length; i++) {
@@ -11773,7 +11773,7 @@ async function saveColumnMapping() {
     showToast('✓ Configuration sauvegardée', 'success');
     closeModalForce();
     
-    // Reload data with new mapping
+    // Recharger les données avec le nouveau mapping
     await loadAllData();
     refreshAllViews();
   } catch (e) {
@@ -12201,7 +12201,7 @@ async function cleanupOldNotifications() {
 }
 
 // =============================================================================
-// GLOBAL SEARCH
+// RECHERCHE GLOBALE
 // =============================================================================
 
 function globalSearch(query) {
@@ -12249,7 +12249,7 @@ function closeSearch() {
 }
 
 // =============================================================================
-// DARK MODE
+// MODE SOMBRE
 // =============================================================================
 
 var isDarkMode = false;
@@ -12297,7 +12297,7 @@ function exportTasks(format) {
 }
 
 // =============================================================================
-// INIT
+// INITIALISATION
 // =============================================================================
 
 if (!isInsideGrist()) {
@@ -12307,11 +12307,11 @@ if (!isInsideGrist()) {
   (async function() {
     await grist.ready({ requiredAccess: 'full' });
 
-    // --- Role detection (Owner / Editor / Viewer) ---
+    // --- Détection du rôle (Owner / Editor / Viewer) ---
     var USER_INFO_TABLE = 'PM_UserInfo';
     var helperWriteSucceeded = false;
 
-    // Step 1: Ensure helper table with trigger formula user.Email
+    // Étape 1 : s'assurer que la table d'aide existe avec la formule de déclenchement user.Email
     try {
       var tables = await grist.docApi.listTables();
       if (tables.indexOf(USER_INFO_TABLE) === -1) {
@@ -12333,7 +12333,7 @@ if (!isInsideGrist()) {
       console.warn('Could not create helper table:', e.message);
     }
 
-    // Step 2: Read current user email via REST API (respects "View As")
+    // Étape 2 : lire l'email de l'utilisateur courant via l'API REST (respecte « View As »)
     try {
       try {
         var existingData = await grist.docApi.fetchTable(USER_INFO_TABLE);
@@ -12366,7 +12366,7 @@ if (!isInsideGrist()) {
       console.warn('Could not read helper table:', e.message);
     }
 
-    // Step 3: Determine role — structure modify test
+    // Étape 3 : déterminer le rôle — test de modification de structure
     var roleDetected = false;
     try {
       await grist.docApi.applyUserActions([
