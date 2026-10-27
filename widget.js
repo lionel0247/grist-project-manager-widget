@@ -954,6 +954,10 @@ var SETTINGS_TABLE = 'PM_Settings';
 var NOTIFICATIONS_TABLE = 'PM_Notifications';
 var ACTIVITY_LOG_TABLE = 'PM_ActivityLog';
 var ATTACHMENTS_TABLE = 'PM_Attachments';
+// Correctif attribution utilisateur : table d'aide exposee en portee globale afin de
+// pouvoir relire l'identite de la session avant chaque ecriture sensible (voir
+// refreshCurrentUserEmail plus bas).
+var USER_INFO_TABLE = 'PM_UserInfo';
 var attachments = [];
 var activityLog = [];
 
@@ -8929,6 +8933,10 @@ async function addComment(taskId) {
   await persistTaskFormFields(taskId);   // A1
 
   try {
+    // Correctif 2 : relire l'identite de la session juste avant d'enregistrer le
+    // commentaire, afin que Author soit toujours l'auteur reel et non une valeur
+    // figee au chargement du widget (anomalie : commentaire de user2 attribue a user1).
+    await refreshCurrentUserEmail();
     await grist.docApi.applyUserActions([
       ['AddRecord', COMMENTS_TABLE, null, {
         Task_Id: taskId,
@@ -9002,6 +9010,9 @@ async function stopTimer(taskId) {
   await persistTaskFormFields(taskId);   // A1
 
   try {
+    // Correctif 2 : identite relue avant l'ecriture pour attribuer le temps saisi au
+    // vrai utilisateur de la session.
+    await refreshCurrentUserEmail();
     await grist.docApi.applyUserActions([
       ['AddRecord', TIME_ENTRIES_TABLE, null, {
         Task_Id: taskId,
@@ -9035,6 +9046,8 @@ async function addManualTimeEntry(taskId) {
   var scrollPos = getModalScrollTop();
   await persistTaskFormFields(taskId);   // A1
   try {
+    // Correctif 2 : identite relue avant l'ecriture pour la saisie manuelle de temps.
+    await refreshCurrentUserEmail();
     await grist.docApi.applyUserActions([
       ['AddRecord', TIME_ENTRIES_TABLE, null, {
         Task_Id: taskId,
@@ -10279,11 +10292,89 @@ function renderBurndownChart() {
 }
 
 // =============================================================================
+// IDENTITE DE LA SESSION (correctif attribution utilisateur)
+// =============================================================================
+// Correctif 1 : lecture isolee par session. La session ajoute uniquement SA ligne
+// dans PM_UserInfo (rowId alloue par Grist), relit exactement ce rowId, puis supprime
+// cette seule ligne. Les lignes des autres sessions ne sont jamais supprimees, ce qui
+// elimine la race condition qui attribuait les actions de user2 a user1 quand les
+// deux avaient le widget ouvert en meme temps.
+// Correctif 2 : cette fonction est rappellee avant chaque ecriture sensible
+// (commentaires, changements de statut, journal d'activite, temps saisi) afin que
+// currentUserEmail reflete toujours l'identite reelle de la session, et non une
+// valeur figee au chargement du widget.
+var helperWriteLastResult = false;
+
+async function refreshCurrentUserEmail() {
+  helperWriteLastResult = false;
+  // Reserver une ligne dediee a cette session : le rowId est alloue par Grist et la
+  // formule declenchee user.Email est evaluee a l'identite de CETTE session.
+  var rowId = null;
+  try {
+    var result = await grist.docApi.applyUserActions([
+      ['AddRecord', USER_INFO_TABLE, null, {}]
+    ]);
+    // Le retour de applyUserActions contient les rowIds crees. Selon la version du
+    // SDK grist-plugin, le retour est soit le tableau des retValues, soit un objet
+    // { retValues: [...] } : on gere les deux formes.
+    var retValues = (result && result.retValues) ? result.retValues : result;
+    if (retValues && retValues[0] && retValues[0].id) {
+      rowId = retValues[0].id;
+    }
+  } catch (writeErr) {
+    console.log('Could not add identity row (read-only?):', writeErr.message);
+    return; // session en lecture seule : on garde la valeur actuelle de currentUserEmail
+  }
+  helperWriteLastResult = true;
+
+  try {
+    // Relire EXACTEMENT la ligne de cette session (jamais records[0], qui peut etre
+    // la ligne d'une autre session ouverte concurremment).
+    var tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
+    var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
+    if (tableResp.ok) {
+      var tableData = await tableResp.json();
+      var mine = (tableData.records || []).filter(function(rec) { return rec.id === rowId; });
+      if (mine.length > 0 && mine[0].fields.UserEmail) {
+        currentUserEmail = mine[0].fields.UserEmail;
+      }
+    } else {
+      // Repli : fetchTable renvoie toutes les lignes ; on isole la notre par rowId.
+      var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
+      if (userInfoData && userInfoData.id) {
+        for (var ri = 0; ri < userInfoData.id.length; ri++) {
+          if (userInfoData.id[ri] === rowId && userInfoData.UserEmail[ri]) {
+            currentUserEmail = userInfoData.UserEmail[ri];
+            break;
+          }
+        }
+      }
+    }
+  } catch (readErr) {
+    console.warn('Could not read identity row:', readErr.message);
+  } finally {
+    // Nettoyer UNIQUEMENT la ligne de cette session — jamais celle des autres sessions,
+    // qui peuvent etre en cours de lecture par leur propre widget.
+    try {
+      await grist.docApi.applyUserActions([
+        ['RemoveRecord', USER_INFO_TABLE, rowId]
+      ]);
+    } catch (cleanErr) {
+      console.warn('Could not clean identity row:', cleanErr.message);
+    }
+  }
+}
+
+// =============================================================================
 // ACTIVITY LOG
 // =============================================================================
 
 async function logActivity(action, taskId, taskTitle, details) {
   try {
+    // Correctif 2 : relire l'identite de la session juste avant d'ecrire dans le journal,
+    // pour ne jamais attribuer une action a un utilisateur fige au chargement du widget
+    // (cas des changements de statut effectues par un autre utilisateur).
+    await refreshCurrentUserEmail();
     var record = {
       Timestamp: Math.floor(Date.now() / 1000),
       User_Email: currentUserEmail || 'unknown',
@@ -12308,7 +12399,6 @@ if (!isInsideGrist()) {
     await grist.ready({ requiredAccess: 'full' });
 
     // --- Role detection (Owner / Editor / Viewer) ---
-    var USER_INFO_TABLE = 'PM_UserInfo';
     var helperWriteSucceeded = false;
 
     // Step 1: Ensure helper table with trigger formula user.Email
@@ -12333,35 +12423,20 @@ if (!isInsideGrist()) {
       console.warn('Could not create helper table:', e.message);
     }
 
-    // Step 2: Read current user email via REST API (respects "View As")
+    // Step 2 : lecture de l'identite de la session courante.
+    // Correctif attribution utilisateur :
+    // AVANT : le widget supprimait TOUTES les lignes de PM_UserInfo (y compris celles
+    // creees par les sessions des autres utilisateurs) puis ajoutait une ligne et
+    // relisait "la premiere ligne" via l'API REST. En cas de widget ouvert simultanement
+    // par deux utilisateurs, la ligne lue pouvait etre celle ecrite par l'autre session :
+    // les commentaires / changements de statut etaient alors attribues au mauvais utilisateur.
+    // APRES : la session n'ajoute que SA propre ligne (AddRecord avec rowId explicite),
+    // relit EXACTEMENT cette ligne (et non records[0]), puis supprime uniquement cette
+    // ligne. Les lignes des autres sessions ne sont jamais touchees, donc plus de
+    // contamination croisee entre utilisateurs.
     try {
-      try {
-        var existingData = await grist.docApi.fetchTable(USER_INFO_TABLE);
-        var rowIds = (existingData && existingData.id) ? existingData.id : [];
-        var actions = [];
-        for (var r = 0; r < rowIds.length; r++) {
-          actions.push(['RemoveRecord', USER_INFO_TABLE, rowIds[r]]);
-        }
-        actions.push(['AddRecord', USER_INFO_TABLE, null, {}]);
-        await grist.docApi.applyUserActions(actions);
-        helperWriteSucceeded = true;
-      } catch (writeErr) {
-        console.log('Could not refresh row (read-only?):', writeErr.message);
-      }
-
-      var tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
-      var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
-      if (tableResp.ok) {
-        var tableData = await tableResp.json();
-        if (tableData.records && tableData.records.length > 0) {
-          currentUserEmail = tableData.records[0].fields.UserEmail || '';
-        }
-      } else {
-        var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
-        if (userInfoData && userInfoData.UserEmail && userInfoData.UserEmail.length > 0) {
-          currentUserEmail = userInfoData.UserEmail[0] || '';
-        }
-      }
+      await refreshCurrentUserEmail();
+      helperWriteSucceeded = helperWriteLastResult;
     } catch (e) {
       console.warn('Could not read helper table:', e.message);
     }
