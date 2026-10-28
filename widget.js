@@ -10315,17 +10315,28 @@ async function refreshCurrentUserEmail() {
       ['AddRecord', USER_INFO_TABLE, null, {}]
     ]);
     // Le retour de applyUserActions contient les rowIds crees. Selon la version du
-    // SDK grist-plugin, le retour est soit le tableau des retValues, soit un objet
-    // { retValues: [...] } : on gere les deux formes.
-    var retValues = (result && result.retValues) ? result.retValues : result;
-    if (retValues && retValues[0] && retValues[0].id) {
-      rowId = retValues[0].id;
+    // SDK grist-plugin, le retour peut etre :
+    // - { retValues: [{ id: 123 }] } (objet avec tableau de retValues)
+    // - [{ id: 123 }] (tableau direct)
+    // - { retValues: [123] } (tableau de scalaires)
+    // - [123] (tableau de scalaires direct)
+    // Extraction robuste du rowId.
+    if (result) {
+      if (result.retValues && Array.isArray(result.retValues) && result.retValues[0]) {
+        rowId = result.retValues[0].id || result.retValues[0];
+      } else if (Array.isArray(result) && result[0]) {
+        rowId = result[0].id || result[0];
+      }
     }
+    if (!rowId) {
+      console.error('[PM_UserInfo] CRITICAL: Could not extract rowId from AddRecord result:', result);
+      return; // Abandonner si on ne peut pas identifier la ligne
+    }
+    helperWriteLastResult = true;
   } catch (writeErr) {
     console.log('Could not add identity row (read-only?):', writeErr.message);
     return; // session en lecture seule : on garde la valeur actuelle de currentUserEmail
   }
-  helperWriteLastResult = true;
 
   try {
     // Relire EXACTEMENT la ligne de cette session (jamais records[0], qui peut etre
@@ -10355,12 +10366,22 @@ async function refreshCurrentUserEmail() {
   } finally {
     // Nettoyer UNIQUEMENT la ligne de cette session — jamais celle des autres sessions,
     // qui peuvent etre en cours de lecture par leur propre widget.
-    try {
-      await grist.docApi.applyUserActions([
-        ['RemoveRecord', USER_INFO_TABLE, rowId]
-      ]);
-    } catch (cleanErr) {
-      console.warn('Could not clean identity row:', cleanErr.message);
+    if (rowId) {
+      try {
+        await grist.docApi.applyUserActions([
+          ['RemoveRecord', USER_INFO_TABLE, rowId]
+        ]);
+      } catch (cleanErr) {
+        console.error('[PM_UserInfo] CRITICAL: Failed to remove row ' + rowId + ': ' + cleanErr.message);
+        // Tentative de reessai une fois
+        try {
+          await grist.docApi.applyUserActions([['RemoveRecord', USER_INFO_TABLE, rowId]]);
+        } catch (retryErr) {
+          console.error('[PM_UserInfo] Retry failed:', retryErr.message);
+        }
+      }
+    } else {
+      console.error('[PM_UserInfo] CRITICAL: rowId is null, cannot clean up!');
     }
   }
 }
