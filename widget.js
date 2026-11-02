@@ -2874,16 +2874,18 @@ function renderProjectSelector() {
   personOptions.sort(function(a, b) { return a.label.localeCompare(b.label); });
   html += buildFilterCombo('person', currentLang === 'fr' ? '— Personne —' : '— Person —', personOptions, currentFilterAssignee, filterByAssignee);
 
-  // Filtre Catégorie
+  /* Catégorie mis en commentaire pour éventuel usage futur
   var allCategories = [];
   tasks.forEach(function(t) { if (t.Category && allCategories.indexOf(t.Category) === -1) allCategories.push(t.Category); });
   allCategories.sort();
   var catOptions = allCategories.map(function(c) { return { value: c, label: c }; });
   html += buildFilterCombo('category', currentLang === 'fr' ? '— Catégorie —' : '— Category —', catOptions, currentFilterCategory, filterByCategory);
+  */
 
-  // Filtre Tag
+  /* Tag mis en commentaire pour éventuel usage futur
   var tagOptions = tags.map(function(tag) { return { value: tag.Name, label: tag.Name }; });
   html += buildFilterCombo('tag', '— Tag —', tagOptions, currentFilterTag, filterByTag);
+  */
 
   // Filtre Projet — combobox moderne avec recherche intégrée
   var selProj = currentProjectId ? projects.find(function(p) { return p.id === currentProjectId; }) : null;
