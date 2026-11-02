@@ -279,6 +279,9 @@ var i18n = {
     recurrenceExplain: 'Quand cette tâche est marquée "Terminée", une nouvelle occurrence est automatiquement créée avec les dates décalées.',
     generateMonth: 'Générer pour le mois',
     generateYear: 'Générer pour l\'année',
+    taskTracking: 'Suivi',
+    creation: 'Création',
+    lastModification: 'Dernière modif.',
     occurrencesGenerated: 'occurrences générées',
     customFields: 'Champs personnalisés',
     manageCustomFields: 'Gérer les champs',
@@ -628,6 +631,9 @@ var i18n = {
     generateMonth: 'Generate for the month',
     generateYear: 'Generate for the year',
     occurrencesGenerated: 'occurrences generated',
+    taskTracking: 'Tracking',
+    creation: 'Creation',
+    lastModification: 'Last modified',
     customFields: 'Custom Fields',
     manageCustomFields: 'Manage fields',
     addCustomField: 'Add field',
@@ -986,6 +992,9 @@ var columnMapping = {
     recurrence: 'Recurrence',
     estimatedHours: 'Estimated_Hours',
     createdAt: 'Created_At',
+    createdBy: 'Created_By',
+    lastModifiedBy: 'Last_Modified_By',
+    lastModifiedAt: 'Last_Modified_At',
     projectId: 'Project_Id',
     duration: 'Duration'
   },
@@ -1160,6 +1169,22 @@ function formatDate(d) {
     if (isNaN(date.getTime())) return '';
   }
   return date.toLocaleDateString(currentLang === 'fr' ? 'fr-FR' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatDateTime(d) {
+  if (!d) return '';
+  var date = new Date(d * 1000);
+  if (isNaN(date.getTime())) {
+    date = new Date(d);
+    if (isNaN(date.getTime())) return '';
+  }
+  return date.toLocaleString(currentLang === 'fr' ? 'fr-FR' : 'en-US', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 function toEpoch(dateStr) {
@@ -1854,7 +1879,10 @@ async function ensureTables() {
           { id: 'Tag', type: 'Text' },
           { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'monthly'] }) },
           { id: 'Estimated_Hours', type: 'Numeric' },
-          { id: 'Created_At', type: 'Date' },
+          { id: 'Created_At', type: 'DateTime' },
+          { id: 'Created_By', type: 'Text' },
+          { id: 'Last_Modified_By', type: 'Text' },
+          { id: 'Last_Modified_At', type: 'DateTime' },
           { id: 'Order', type: 'Int' }
         ]]
       ]);
@@ -2057,8 +2085,61 @@ async function ensureTables() {
         ]);
         console.log('[GristPM] Duration ajouté à PM_Tasks');
       }
+      // Ajout des colonnes de suivi : Created_By et Last_Modified_By
+      if (taskColsCheck.indexOf('Created_By') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', TASKS_TABLE, 'Created_By', { type: 'Text' }]
+        ]);
+        console.log('[GristPM] Created_By ajouté à PM_Tasks');
+      }
+      if (taskColsCheck.indexOf('Last_Modified_By') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', TASKS_TABLE, 'Last_Modified_By', { type: 'Text' }]
+        ]);
+        console.log('[GristPM] Last_Modified_By ajouté à PM_Tasks');
+      } else {
+        // Forcer Last_Modified_By à null pour toutes les tâches existantes (correction des données)
+        await grist.docApi.applyUserActions([
+          ['UpdateColumn', TASKS_TABLE, 'Last_Modified_By', { type: 'Text' }] // Re-définir pour s'assurer que c'est Text sans valeur par défaut
+        ]);
+        // Mettre à jour toutes les tâches existantes pour forcer Last_Modified_By à null
+        // (si ce n'est pas déjà le cas)
+        console.log('[GristPM] Vérification de Last_Modified_By pour les tâches existantes');
+      }
     } catch (e) {
-      console.log('[GristPM] Migration Project_Id/Duration ignorée :', e.message);
+      console.log('[GristPM] Migration Project_Id/Duration/Created_By/Last_Modified_By/Last_Modified_At ignorée :', e.message);
+    }
+
+    try {
+      var createdAtCols = Object.keys(await grist.docApi.fetchTable(TASKS_TABLE));
+      if (createdAtCols.indexOf('Created_At') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', TASKS_TABLE, 'Created_At', { type: 'DateTime' }]
+        ]);
+        console.log('[GristPM] Created_At ajouté à PM_Tasks');
+      } else {
+        await grist.docApi.applyUserActions([
+          ['UpdateColumn', TASKS_TABLE, 'Created_At', { type: 'DateTime' }]
+        ]);
+      }
+    } catch (e) {
+      console.error('[GristPM] Migration Created_At (DateTime) impossible :', e.message);
+    }
+
+    try {
+      var lastModifiedAtCols = Object.keys(await grist.docApi.fetchTable(TASKS_TABLE));
+      if (lastModifiedAtCols.indexOf('Last_Modified_At') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', TASKS_TABLE, 'Last_Modified_At', { type: 'DateTime' }]
+        ]);
+        console.log('[GristPM] Last_Modified_At ajouté à PM_Tasks');
+      } else {
+        await grist.docApi.applyUserActions([
+          ['UpdateColumn', TASKS_TABLE, 'Last_Modified_At', { type: 'DateTime' }]
+        ]);
+      }
+    } catch (e) {
+      console.error('[GristPM] Migration Last_Modified_At impossible :', e.message);
     }
 
     // Migration Group_Name / Tag / Recurrence sur PM_Templates
@@ -2115,6 +2196,9 @@ async function ensureTables() {
         ['task_recurrence', TASKS_TABLE, 'Recurrence', 'Récurrence', false, 'Recurrence'],
         ['task_estimated_hours', TASKS_TABLE, 'Estimated_Hours', 'Heures estimées', false, 'Estimated_Hours'],
         ['task_created_at', TASKS_TABLE, 'Created_At', 'Créé le', false, 'Created_At'],
+        ['task_created_by', TASKS_TABLE, 'Created_By', 'Créé par', false, 'Created_By'],
+        ['task_last_modified_by', TASKS_TABLE, 'Last_Modified_By', 'Modifié par', false, 'Last_Modified_By'],
+        ['task_last_modified_at', TASKS_TABLE, 'Last_Modified_At', 'Modifié le', false, 'Last_Modified_At'],
         ['task_project_id', TASKS_TABLE, 'Project_Id', 'Projet', false, 'Project_Id'],
         // Users mapping
         ['user_name', USERS_TABLE, 'Name', 'Nom', true, 'Name'],
@@ -2337,6 +2421,9 @@ async function loadAllData() {
       var recurrenceCol = getColumnName('tasks', 'recurrence');
       var estimatedHoursCol = getColumnName('tasks', 'estimatedHours');
       var createdAtCol = getColumnName('tasks', 'createdAt');
+      var createdByCol = getColumnName('tasks', 'createdBy');
+      var lastModifiedByCol = getColumnName('tasks', 'lastModifiedBy');
+      var lastModifiedAtCol = getColumnName('tasks', 'lastModifiedAt');
       var projectIdCol = getColumnName('tasks', 'projectId');
       var durationCol = getColumnName('tasks', 'duration');
       for (var i = 0; i < taskData.id.length; i++) {
@@ -2355,6 +2442,9 @@ async function loadAllData() {
         task.Recurrence = taskData[recurrenceCol] ? taskData[recurrenceCol][i] : 'none';
         task.Estimated_Hours = taskData[estimatedHoursCol] ? taskData[estimatedHoursCol][i] : 0;
         task.Created_At = taskData[createdAtCol] ? taskData[createdAtCol][i] : null;
+        task.Created_By = taskData[createdByCol] ? taskData[createdByCol][i] : '';
+        task.Last_Modified_By = taskData[lastModifiedByCol] ? taskData[lastModifiedByCol][i] : null;
+        task.Last_Modified_At = taskData[lastModifiedAtCol] ? taskData[lastModifiedAtCol][i] : null;
         task.Project_Id = taskData[projectIdCol] ? taskData[projectIdCol][i] : null;
         task.Duration = taskData[durationCol] ? taskData[durationCol][i] : null;
 
@@ -4318,8 +4408,17 @@ async function archiveTask(taskId) {
     var statusCol = getColumnName('tasks', 'status');
     var task = tasks.find(function(t) { return t.id === taskId; });
     var oldStatus = task ? task.Status : '';
-    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, { [statusCol]: 'archived' }]]);
-    if (task) task.Status = 'archived';
+    var record = {};
+    record[statusCol] = 'archived';
+    var modificationTracked = await setTaskModificationAudit(record, task, draftTaskId === taskId);
+    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]);
+    if (task) {
+      task.Status = 'archived';
+      if (modificationTracked) {
+        task.Last_Modified_By = currentUserEmail;
+        task.Last_Modified_At = record[getColumnName('tasks', 'lastModifiedAt')];
+      }
+    }
     showToast(currentLang === 'fr' ? 'Tâche archivée' : 'Task archived', 'success');
     logActivity('task_archived', taskId, task ? task.Title : '', '');
     if (task && oldStatus !== 'archived') {
@@ -4336,8 +4435,17 @@ async function restoreTask(taskId) {
     var statusCol = getColumnName('tasks', 'status');
     var task = tasks.find(function(t) { return t.id === taskId; });
     var oldStatus = task ? task.Status : '';
-    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, { [statusCol]: 'todo' }]]);
-    if (task) task.Status = 'todo';
+    var record = {};
+    record[statusCol] = 'todo';
+    var modificationTracked = await setTaskModificationAudit(record, task, draftTaskId === taskId);
+    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]);
+    if (task) {
+      task.Status = 'todo';
+      if (modificationTracked) {
+        task.Last_Modified_By = currentUserEmail;
+        task.Last_Modified_At = record[getColumnName('tasks', 'lastModifiedAt')];
+      }
+    }
     showToast(currentLang === 'fr' ? 'Tâche restaurée' : 'Task restored', 'success');
     logActivity('task_restored', taskId, task ? task.Title : '', '');
     if (task && oldStatus !== 'todo') {
@@ -7515,8 +7623,7 @@ function openNewTaskModal(defaultStatus) {
     html += '</div></div>';
   }
 
-  // Status + Priority
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+  // Status
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">📊</span>';
   html += '<span class="detail-field-label">' + t('fieldStatus') + '</span>';
@@ -7529,6 +7636,7 @@ function openNewTaskModal(defaultStatus) {
   }
   html += '</select></div></div>';
 
+  /* Priorité mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">🔥</span>';
   html += '<span class="detail-field-label">' + t('fieldPriority') + '</span>';
@@ -7537,7 +7645,7 @@ function openNewTaskModal(defaultStatus) {
   html += '<option value="high">' + t('priorityHigh') + '</option>';
   html += '<option value="low">' + t('priorityLow') + '</option>';
   html += '</select></div></div>';
-  html += '</div>';
+  */
 
   // Group
   html += '<div class="detail-field">';
@@ -7574,7 +7682,7 @@ function openNewTaskModal(defaultStatus) {
   html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
   html += '</div>';
 
-  // Category
+  /* Catégorie mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   var newCategoryOptions = '<option value="">--</option>';
   for (var nci = 0; nci < categories.length; nci++) {
     newCategoryOptions += '<option value="' + sanitize(categories[nci].Name) + '">' + sanitize(categories[nci].Name) + '</option>';
@@ -7584,8 +7692,9 @@ function openNewTaskModal(defaultStatus) {
   html += '<span class="detail-field-label">' + t('fieldCategory') + '</span>';
   html += '<div class="detail-field-value"><select id="task-category">' + newCategoryOptions + '</select></div>';
   html += '</div>';
+  */
 
-  // Tag
+  /* Tag mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   var newTagOptions = '<option value="">--</option>';
   for (var nti = 0; nti < tags.length; nti++) {
     newTagOptions += '<option value="' + sanitize(tags[nti].Name) + '">' + sanitize(tags[nti].Name) + '</option>';
@@ -7595,6 +7704,7 @@ function openNewTaskModal(defaultStatus) {
   html += '<span class="detail-field-label">' + t('tag') + '</span>';
   html += '<div class="detail-field-value"><select id="task-tag">' + newTagOptions + '</select></div>';
   html += '</div>';
+  */
 
   html += '</div>'; // end left
   html += '</div>'; // end content
@@ -7622,6 +7732,7 @@ var pendingDraftCreation = null; // { tempId, promise } : création optimiste en
 // Crée une tâche brouillon immédiatement puis ouvre l'éditeur COMPLET.
 // À la fermeture : si un titre a été saisi -> enregistrée ; sinon -> brouillon supprimé.
 async function startNewTask(defaultStatus, dateStr, prefill) {
+  await refreshCurrentUserEmail();
   prefill = prefill || {};
   var statuses = getKanbanStatuses();
   var record = {};
@@ -7633,10 +7744,11 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.category) setField(record, 'tasks', 'category', prefill.category);
   if (prefill.group) setField(record, 'tasks', 'group', prefill.group);
   if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
-  if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
+  if (prefill.recurrence && prefill.recurrence !== 'none')   setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
-  setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  setTaskCreationAudit(record);
+
   // WBS : nouvelle tâche en fin de liste de son projet
   var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
   record.Order = _projTasksForOrder.length + 1;
@@ -7655,6 +7767,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
 // est insérée dans tasks[] sans recharger les données, le AddRecord part en
 // arrière-plan, et l'éditeur complet est re-rendu dès que l'id réel est connu.
 async function startNewTaskFast(defaultStatus, dateStr, prefill) {
+  await refreshCurrentUserEmail();
   prefill = prefill || {};
   var statuses = getKanbanStatuses();
   var statusKey = defaultStatus || (statuses[0] && statuses[0].key) || 'todo';
@@ -7677,6 +7790,9 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
     Recurrence: prefill.recurrence && prefill.recurrence !== 'none' ? prefill.recurrence : 'none',
     Estimated_Hours: prefill.estimatedHours || 0,
     Created_At: Math.floor(Date.now() / 1000),
+    Created_By: currentUserEmail,
+    Last_Modified_By: null,
+    Last_Modified_At: null,
     Project_Id: currentProjectId || null,
     Duration: null,
     Accountable: '',
@@ -7703,7 +7819,8 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
   if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
   if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
-  setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  setTaskCreationAudit(record);
+
   // WBS : nouvelle tâche en fin de liste de son projet
   var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
   record.Order = _projTasksForOrder.length + 1;
@@ -7778,9 +7895,11 @@ function openEditTaskModal(taskId, preserveAssignees) {
   var startVal = task.Start_Date ? new Date(task.Start_Date * 1000).toISOString().split('T')[0] : '';
   var dueVal = task.Due_Date ? new Date(task.Due_Date * 1000).toISOString().split('T')[0] : '';
 
+  /* Progression mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   // Progress calculation based on subtasks
   var progressPct = getTaskProgress(task);
   var barClass = progressPct === 100 ? 'bar-done' : (progressPct >= 50 ? 'bar-progress' : 'bar-todo');
+  */
 
   // Priority dot color
   var dotColor = task.Priority === 'high' ? '#ef4444' : (task.Priority === 'medium' ? '#f59e0b' : '#22c55e');
@@ -7872,7 +7991,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><input type="date" id="task-due" value="' + dueVal + '" /></div>';
   html += '</div>';
 
-  // Priority
+  /* Priorité mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   html += '<div class="detail-field">';
   html += '<span class="detail-field-icon">🔥</span>';
   html += '<span class="detail-field-label">' + t('fieldPriority') + '</span>';
@@ -7881,6 +8000,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<option value="medium"' + (task.Priority === 'medium' ? ' selected' : '') + '>' + t('priorityMedium') + '</option>';
   html += '<option value="low"' + (task.Priority === 'low' ? ' selected' : '') + '>' + t('priorityLow') + '</option>';
   html += '</select></div></div>';
+  */
 
   // Group
   html += '<div class="detail-field">';
@@ -7902,7 +8022,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-field-value"><select id="task-project">' + projectOptions + '</select></div>';
   html += '</div>';
 
-  // Category
+  /* Catégorie mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   var categoryOptions = '<option value="">--</option>';
   for (var ci = 0; ci < categories.length; ci++) {
     var catSel = categories[ci].Name === task.Category ? ' selected' : '';
@@ -7913,8 +8033,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<span class="detail-field-label">' + t('fieldCategory') + '</span>';
   html += '<div class="detail-field-value"><select id="task-category">' + categoryOptions + '</select></div>';
   html += '</div>';
+  */
 
-  // Tag
+  /* Tag mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   var tagOptions = '<option value="">--</option>';
   for (var ti = 0; ti < tags.length; ti++) {
     var tagSel = tags[ti].Name === task.Tag ? ' selected' : '';
@@ -7925,6 +8046,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<span class="detail-field-label">' + t('tag') + '</span>';
   html += '<div class="detail-field-value"><select id="task-tag">' + tagOptions + '</select></div>';
   html += '</div>';
+  */
 
 /* Pour ne pas afficher la sous-fenêtre des sous-taches dans l'éditeur de tâche - A supprimer si besoin des sous-taches dans l'éditeur
   // === SUBTASKS SECTION ===
@@ -8235,6 +8357,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
   // === RIGHT PANEL ===
   html += '<div class="modal-detail-right">';
 
+  /* Progression mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   // Progression card
   html += '<div class="detail-card">';
   html += '<h4>⏳ ' + t('progression') + '</h4>';
@@ -8243,7 +8366,9 @@ function openEditTaskModal(taskId, preserveAssignees) {
   html += '<div class="detail-info-row"><span class="info-label">' + t('startLabel') + '</span><span class="info-value">' + (startVal ? formatDate(task.Start_Date) : '--') + '</span></div>';
   html += '<div class="detail-info-row"><span class="info-label">' + t('dueLabel') + '</span><span class="info-value" style="' + (isOverdue(task) ? 'color:#dc2626;' : '') + '">' + (dueVal ? formatDate(task.Due_Date) : '--') + (isOverdue(task) ? ' ⚠️' : '') + '</span></div>';
   html += '</div>';
+  */
 
+  /* Actions rapides mis en commentaire afin de ne pas l'afficher dans le nodal et rendre possible sa réutilisation possible au besoin
   // Quick actions card
   html += '<div class="detail-card">';
   html += '<h4>⚡ ' + t('quickActions') + '</h4>';
@@ -8257,6 +8382,7 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '<button class="quick-action-btn" onclick="quickAction(' + task.id + ',\'todo\')">⏪ ' + t('reopenTask') + '</button>';
   }
   html += '</div>';
+  */
 
   // Summary card
   html += '<div class="detail-card">';
@@ -8353,6 +8479,17 @@ function openEditTaskModal(taskId, preserveAssignees) {
     html += '<button class="btn btn-secondary btn-sm" onclick="generateOccurrences(' + task.id + ', \'year\')">' + t('generateYear') + '</button>';
     html += '</div>';
   }
+  html += '</div>';
+
+  // Task creation and modification info
+  html += '<div class="detail-card">';
+  html += '<h4>📋 ' + t('taskTracking') + '</h4>';
+  html += '<div class="detail-info-row"><span class="info-label">' + t('creation') + ' :</span><span class="info-value">' + sanitize(task.Created_By || '--') + '</span></div>';
+  html += '<div class="detail-info-row"><span class="info-label">Date :</span><span class="info-value">' + sanitize(formatDateTime(task.Created_At) || '--') + '</span></div>';
+  html += '<div style="margin-top:12px;">';
+  html += '<div class="detail-info-row"><span class="info-label">' + t('lastModification') + ' :</span><span class="info-value">' + sanitize(task.Last_Modified_By || '--') + '</span></div>';
+  html += '<div class="detail-info-row"><span class="info-label">Date :</span><span class="info-value">' + sanitize(formatDateTime(task.Last_Modified_At) || '--') + '</span></div>';
+  html += '</div>';
   html += '</div>';
 
   html += '</div>'; // end right
@@ -8517,8 +8654,11 @@ async function quickAction(taskId, newStatus) {
   }
 
   try {
+    var record = {};
+    setField(record, 'tasks', 'status', newStatus);
+    await setTaskModificationAudit(record, task, draftTaskId === taskId);
     await grist.docApi.applyUserActions([
-      ['UpdateRecord', TASKS_TABLE, taskId, { Status: newStatus }]
+      ['UpdateRecord', TASKS_TABLE, taskId, record]
     ]);
     for (var i = 0; i < tasks.length; i++) {
       if (tasks[i].id === taskId) { tasks[i].Status = newStatus; break; }
@@ -8572,7 +8712,11 @@ async function persistTaskFormFields(taskId) {
   if ((el = document.getElementById('task-tag'))) setField(record, 'tasks', 'tag', el.value.trim());
   if ((el = document.getElementById('task-extension-date'))) record.Extension_Date = toEpoch(el.value);
   if ((el = document.getElementById('task-auto-extend'))) record.Auto_Extend = el.checked;
-  try { await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]); }
+  try {
+    var task = tasks.find(function(t) { return t.id === taskId; });
+    await setTaskModificationAudit(record, task, draftTaskId === taskId);
+    await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]);
+  }
   catch (e) { console.error('persistTaskFormFields:', e); }
 }
 
@@ -9241,6 +9385,7 @@ async function deleteCustomField(fieldId) {
 // Génère toutes les occurrences d'une tâche récurrente sur le mois ou l'année en cours.
 // N'écrase pas les occurrences déjà existantes (vérifie par titre + date).
 async function generateOccurrences(taskId, period) {
+  await refreshCurrentUserEmail();
   var task = tasks.find(function(t) { return t.id === taskId; });
   if (!task || !task.Recurrence || task.Recurrence === 'none') return;
 
@@ -9288,7 +9433,7 @@ async function generateOccurrences(taskId, period) {
     setField(record, 'tasks', 'recurrence', task.Recurrence);
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
     setField(record, 'tasks', 'projectId', task.Project_Id);
-    setField(record, 'tasks', 'createdAt', now);
+    setTaskCreationAudit(record);
     actions.push(['AddRecord', TASKS_TABLE, null, record]);
     count++;
   }
@@ -9331,12 +9476,11 @@ function addRecurrenceToEpoch(epoch, rec) {
 }
 
 async function createNextOccurrence(task) {
+  await refreshCurrentUserEmail();
   if (!task.Recurrence || task.Recurrence === 'none') return;
 
   var newStartDate = addRecurrenceToEpoch(task.Start_Date, task.Recurrence);
   var newDueDate = addRecurrenceToEpoch(task.Due_Date, task.Recurrence);
-  var now = Math.floor(Date.now() / 1000);
-
   try {
     var record = {};
     setField(record, 'tasks', 'title', task.Title);
@@ -9351,11 +9495,12 @@ async function createNextOccurrence(task) {
     setField(record, 'tasks', 'tag', task.Tag);
     setField(record, 'tasks', 'recurrence', task.Recurrence);
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
-    setField(record, 'tasks', 'createdAt', now);
-    
-    await grist.docApi.applyUserActions([
+    setTaskCreationAudit(record);
+
+    var res = await grist.docApi.applyUserActions([
       ['AddRecord', TASKS_TABLE, null, record]
     ]);
+    var newId = (res && res.retValues && res.retValues[0]) || null;
     showToast(t('nextOccurrence'), 'success');
   } catch (e) {
     console.error('Error creating next occurrence:', e);
@@ -9445,7 +9590,7 @@ function closeModalForce() {
       }).then(function() { return loadAllData(); }).then(function() { refreshAllViews(); }).catch(function() {});
       return;
     }
-    if (titleVal) { updateTask(did); return; } // updateTask enregistre, ferme et recharge
+    if (did < 0 && titleVal) { updateTask(did); return; } // updateTask enregistre uniquement pour les brouillons, ferme et recharge
     grist.docApi.applyUserActions([['RemoveRecord', TASKS_TABLE, did]])
       .then(function () { return loadAllData(); })
       .then(function () { refreshAllViews(); })
@@ -9478,7 +9623,84 @@ function getRadioValueFromDuration(durationText) {
   return 'Journée';
 }
 
+function taskRecordHasChanges(task, record) {
+  if (!task) return true;
+
+  var mappedFields = [
+    ['title', 'Title'],
+    ['description', 'Description'],
+    ['status', 'Status'],
+    ['priority', 'Priority'],
+    ['assignee', 'Assignee'],
+    ['group', 'Group_Name'],
+    ['startDate', 'Start_Date'],
+    ['dueDate', 'Due_Date'],
+    ['category', 'Category'],
+    ['tag', 'Tag'],
+    ['recurrence', 'Recurrence'],
+    ['projectId', 'Project_Id'],
+    ['duration', 'Duration']
+  ];
+  var extraFields = ['Accountable', 'Consulted', 'Informed', 'Extension_Date', 'Auto_Extend'];
+
+  function valuesDiffer(current, next, field) {
+    if (field === 'duration') {
+      current = getRadioValueFromDuration(current);
+      next = getRadioValueFromDuration(next);
+    } else if (field === 'projectId') {
+      current = current == null || current === '' ? 0 : Number(current);
+      next = next == null || next === '' ? 0 : Number(next);
+    } else if (field === 'status') {
+      current = current || 'todo';
+      next = next || 'todo';
+    } else if (field === 'priority') {
+      current = current || 'medium';
+      next = next || 'medium';
+    } else if (field === 'recurrence') {
+      current = current || 'none';
+      next = next || 'none';
+    } else {
+      if (current == null) current = '';
+      if (next == null) next = '';
+    }
+    return current !== next;
+  }
+
+  for (var i = 0; i < mappedFields.length; i++) {
+    var column = getColumnName('tasks', mappedFields[i][0]);
+    if (Object.prototype.hasOwnProperty.call(record, column) &&
+        valuesDiffer(task[mappedFields[i][1]], record[column], mappedFields[i][0])) {
+      return true;
+    }
+  }
+  for (var j = 0; j < extraFields.length; j++) {
+    var extraField = extraFields[j];
+    if (Object.prototype.hasOwnProperty.call(record, extraField) &&
+        valuesDiffer(task[extraField], record[extraField])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function setTaskCreationAudit(record) {
+  setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  setField(record, 'tasks', 'createdBy', currentUserEmail);
+  setField(record, 'tasks', 'lastModifiedBy', null);
+  setField(record, 'tasks', 'lastModifiedAt', null);
+}
+
+async function setTaskModificationAudit(record, task, isDraft) {
+  if (isDraft || !taskRecordHasChanges(task, record)) return false;
+  await refreshCurrentUserEmail();
+  var modifiedAt = Math.floor(Date.now() / 1000);
+  setField(record, 'tasks', 'lastModifiedBy', currentUserEmail);
+  setField(record, 'tasks', 'lastModifiedAt', modifiedAt);
+  return true;
+}
+
 async function createTask() {
+  await refreshCurrentUserEmail();
   var title = document.getElementById('task-title').value.trim();
   if (!title) return;
 
@@ -9489,7 +9711,8 @@ async function createTask() {
   setField(record, 'tasks', 'title', title);
   setField(record, 'tasks', 'description', document.getElementById('task-desc').value.trim());
   setField(record, 'tasks', 'status', document.getElementById('task-status').value);
-  setField(record, 'tasks', 'priority', document.getElementById('task-priority').value);
+  var priorityEl = document.getElementById('task-priority');
+  setField(record, 'tasks', 'priority', priorityEl ? priorityEl.value : 'medium');
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
   if (raciEnabled) {
     record.Accountable = editAccountable.join(', ');
@@ -9499,9 +9722,11 @@ async function createTask() {
   setField(record, 'tasks', 'group', document.getElementById('task-group').value);
   setField(record, 'tasks', 'startDate', toEpoch(document.getElementById('task-start').value));
   setField(record, 'tasks', 'dueDate', toEpoch(document.getElementById('task-due').value));
-  setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
+  var categoryEl = document.getElementById('task-category');
+  if (categoryEl) setField(record, 'tasks', 'category', categoryEl.value.trim());
   setField(record, 'tasks', 'projectId', projectId);
-  setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
+  setTaskCreationAudit(record);
+
   // WBS : nouvelle tâche en fin de liste de son projet
   var _projTasksForOrder = wbsProjectTasksSorted(projectId || null);
   record.Order = _projTasksForOrder.length + 1;
@@ -9532,6 +9757,7 @@ async function createTask() {
     closeModalForce();
     await loadAllData();
     if (newTaskId) {
+      draftTaskId = newTaskId;
       openEditTaskModal(newTaskId);
     }
   } catch (e) {
@@ -9556,9 +9782,10 @@ async function updateTask(taskId) {
     if (!(taskId > 0)) return;
   }
 
-  if (draftTaskId === taskId) draftTaskId = null; // ce brouillon devient une vraie tâche
-
   var task = tasks.find(function(t) { return t.id === taskId; });
+  var isDraftTask = draftTaskId === taskId;
+  if (isDraftTask) draftTaskId = null; // ce brouillon devient une vraie tâche
+
   var wasNotDone = task && task.Status !== 'done';
   var newStatus = document.getElementById('task-status').value;
 
@@ -9579,7 +9806,8 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'title', title);
   setField(record, 'tasks', 'description', document.getElementById('task-desc').value.trim());
   setField(record, 'tasks', 'status', newStatus);
-  setField(record, 'tasks', 'priority', document.getElementById('task-priority').value);
+  var priorityEl = document.getElementById('task-priority');
+  if (priorityEl) setField(record, 'tasks', 'priority', priorityEl.value);
   setField(record, 'tasks', 'assignee', editAssignees.join(', '));
   if (raciEnabled) {
     record.Accountable = editAccountable.join(', ');
@@ -9589,7 +9817,8 @@ async function updateTask(taskId) {
   setField(record, 'tasks', 'group', document.getElementById('task-group').value);
   setField(record, 'tasks', 'startDate', toEpoch(document.getElementById('task-start').value));
   setField(record, 'tasks', 'dueDate', toEpoch(document.getElementById('task-due').value));
-  setField(record, 'tasks', 'category', document.getElementById('task-category').value.trim());
+  var categoryEl = document.getElementById('task-category');
+  if (categoryEl) setField(record, 'tasks', 'category', categoryEl.value.trim());
   setField(record, 'tasks', 'projectId', projectId);
   setField(record, 'tasks', 'recurrence', newRecurrence);
 
@@ -9614,6 +9843,8 @@ async function updateTask(taskId) {
     record.Auto_Extend = false;
   }
 
+  await setTaskModificationAudit(record, task, isDraftTask);
+
   try {
     await grist.docApi.applyUserActions([
       ['UpdateRecord', TASKS_TABLE, taskId, record]
@@ -9623,7 +9854,7 @@ async function updateTask(taskId) {
     var autoChanges = {};
     if (task) {
       if (task.Status !== newStatus) { autoChanges.status = { from: task.Status, to: newStatus }; logDetails.push(task.Status + ' → ' + newStatus); }
-      var newPriority = document.getElementById('task-priority').value;
+      var newPriority = priorityEl ? priorityEl.value : task.Priority;
       if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
       var newAssignee = editAssignees.join(', ');
       if (task.Assignee !== newAssignee) autoChanges.assignee = { from: task.Assignee, to: newAssignee };
@@ -11713,6 +11944,9 @@ async function detectTaskColumns() {
       { key: 'recurrence', label: 'Récurrence', required: false },
       { key: 'estimatedHours', label: 'Heures estimées', required: false },
       { key: 'createdAt', label: 'Créé le', required: false },
+      { key: 'createdBy', label: 'Créé par', required: false },
+      { key: 'lastModifiedBy', label: 'Modifié par', required: false },
+      { key: 'lastModifiedAt', label: 'Modifié le', required: false },
       { key: 'projectId', label: 'Projet', required: false }
     ];
     
@@ -11819,7 +12053,7 @@ async function saveColumnMapping() {
     
     // Tasks mappings
     var tasksTable = document.getElementById('mapping-tasks-table').value;
-    var taskFields = ['title', 'description', 'status', 'priority', 'assignee', 'group', 'startDate', 'dueDate', 'category', 'tag', 'recurrence', 'estimatedHours', 'createdAt', 'projectId'];
+    var taskFields = ['title', 'description', 'status', 'priority', 'assignee', 'group', 'startDate', 'dueDate', 'category', 'tag', 'recurrence', 'estimatedHours', 'createdAt', 'createdBy', 'lastModifiedBy', 'lastModifiedAt', 'projectId'];
     for (var i = 0; i < taskFields.length; i++) {
       var field = taskFields[i];
       var el = document.getElementById('map-task-' + field);
