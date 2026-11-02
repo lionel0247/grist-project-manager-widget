@@ -1026,6 +1026,11 @@ var columnMapping = {
 var isOwner = false;
 var isEditor = false;
 var currentUserEmail = '';
+var currentUserName = '';
+
+function getCurrentUserDisplayName() {
+  return (currentUserName || '').trim() || currentUserEmail;
+}
 
 // =============================================================================
 // UTILS
@@ -4415,7 +4420,7 @@ async function archiveTask(taskId) {
     if (task) {
       task.Status = 'archived';
       if (modificationTracked) {
-        task.Last_Modified_By = currentUserEmail;
+        task.Last_Modified_By = getCurrentUserDisplayName();
         task.Last_Modified_At = record[getColumnName('tasks', 'lastModifiedAt')];
       }
     }
@@ -4442,7 +4447,7 @@ async function restoreTask(taskId) {
     if (task) {
       task.Status = 'todo';
       if (modificationTracked) {
-        task.Last_Modified_By = currentUserEmail;
+        task.Last_Modified_By = getCurrentUserDisplayName();
         task.Last_Modified_At = record[getColumnName('tasks', 'lastModifiedAt')];
       }
     }
@@ -7790,7 +7795,7 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
     Recurrence: prefill.recurrence && prefill.recurrence !== 'none' ? prefill.recurrence : 'none',
     Estimated_Hours: prefill.estimatedHours || 0,
     Created_At: Math.floor(Date.now() / 1000),
-    Created_By: currentUserEmail,
+    Created_By: getCurrentUserDisplayName(),
     Last_Modified_By: null,
     Last_Modified_At: null,
     Project_Id: currentProjectId || null,
@@ -9685,7 +9690,7 @@ function taskRecordHasChanges(task, record) {
 
 function setTaskCreationAudit(record) {
   setField(record, 'tasks', 'createdAt', Math.floor(Date.now() / 1000));
-  setField(record, 'tasks', 'createdBy', currentUserEmail);
+  setField(record, 'tasks', 'createdBy', getCurrentUserDisplayName());
   setField(record, 'tasks', 'lastModifiedBy', null);
   setField(record, 'tasks', 'lastModifiedAt', null);
 }
@@ -9694,7 +9699,7 @@ async function setTaskModificationAudit(record, task, isDraft) {
   if (isDraft || !taskRecordHasChanges(task, record)) return false;
   await refreshCurrentUserEmail();
   var modifiedAt = Math.floor(Date.now() / 1000);
-  setField(record, 'tasks', 'lastModifiedBy', currentUserEmail);
+  setField(record, 'tasks', 'lastModifiedBy', getCurrentUserDisplayName());
   setField(record, 'tasks', 'lastModifiedAt', modifiedAt);
   return true;
 }
@@ -10538,6 +10543,7 @@ var helperWriteLastResult = false;
 
 async function refreshCurrentUserEmail() {
   helperWriteLastResult = false;
+  currentUserName = '';
   // Reserver une ligne dediee a cette session : le rowId est alloue par Grist et la
   // formule declenchee user.Email est evaluee a l'identite de CETTE session.
   var rowId = null;
@@ -10577,16 +10583,18 @@ async function refreshCurrentUserEmail() {
     if (tableResp.ok) {
       var tableData = await tableResp.json();
       var mine = (tableData.records || []).filter(function(rec) { return rec.id === rowId; });
-      if (mine.length > 0 && mine[0].fields.UserEmail) {
-        currentUserEmail = mine[0].fields.UserEmail;
+      if (mine.length > 0) {
+        if (mine[0].fields.UserEmail) currentUserEmail = mine[0].fields.UserEmail;
+        if (mine[0].fields.UserName) currentUserName = mine[0].fields.UserName;
       }
     } else {
       // Repli : fetchTable renvoie toutes les lignes ; on isole la notre par rowId.
       var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
       if (userInfoData && userInfoData.id) {
         for (var ri = 0; ri < userInfoData.id.length; ri++) {
-          if (userInfoData.id[ri] === rowId && userInfoData.UserEmail[ri]) {
-            currentUserEmail = userInfoData.UserEmail[ri];
+          if (userInfoData.id[ri] === rowId) {
+            if (userInfoData.UserEmail && userInfoData.UserEmail[ri]) currentUserEmail = userInfoData.UserEmail[ri];
+            if (userInfoData.UserName && userInfoData.UserName[ri]) currentUserName = userInfoData.UserName[ri];
             break;
           }
         }
@@ -12656,23 +12664,47 @@ if (!isInsideGrist()) {
     // --- Role detection (Owner / Editor / Viewer) ---
     var helperWriteSucceeded = false;
 
-    // Step 1: Ensure helper table with trigger formula user.Email
+    // Step 1: Ensure helper table with trigger formulas for the current user's identity
     try {
       var tables = await grist.docApi.listTables();
       if (tables.indexOf(USER_INFO_TABLE) === -1) {
         await grist.docApi.applyUserActions([
           ['AddTable', USER_INFO_TABLE, [
-            { id: 'UserEmail', fields: { type: 'Text', label: 'UserEmail' } }
+            { id: 'UserEmail', fields: { type: 'Text', label: 'UserEmail' } },
+            { id: 'UserName', fields: { type: 'Text', label: 'UserName' } }
           ]]
         ]);
+      }
+      var userInfoColumns = Object.keys(await grist.docApi.fetchTable(USER_INFO_TABLE));
+      if (userInfoColumns.indexOf('UserEmail') === -1) {
         await grist.docApi.applyUserActions([
-          ['ModifyColumn', USER_INFO_TABLE, 'UserEmail', {
+          ['AddColumn', USER_INFO_TABLE, 'UserEmail', { type: 'Text' }]
+        ]);
+      }
+      if (userInfoColumns.indexOf('UserName') === -1) {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', USER_INFO_TABLE, 'UserName', { type: 'Text' }]
+        ]);
+      }
+      await grist.docApi.applyUserActions([
+        ['ModifyColumn', USER_INFO_TABLE, 'UserEmail', {
+          isFormula: false,
+          formula: 'user.Email',
+          recalcWhen: 2,
+          recalcDeps: null
+        }]
+      ]);
+      try {
+        await grist.docApi.applyUserActions([
+          ['ModifyColumn', USER_INFO_TABLE, 'UserName', {
             isFormula: false,
-            formula: 'user.Email',
+            formula: 'user.Name',
             recalcWhen: 2,
             recalcDeps: null
           }]
         ]);
+      } catch (nameFormulaError) {
+        console.warn('Could not configure current user name formula:', nameFormulaError.message);
       }
     } catch (e) {
       console.warn('Could not create helper table:', e.message);
