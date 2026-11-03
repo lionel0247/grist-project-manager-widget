@@ -47,6 +47,11 @@ Si vous installez le widget pour la première fois, **aucune configuration n'est
 | **Échéance** | Date d'échéance | Non | Date |
 | **Catégorie** | Catégorie de la tâche | Non | Text |
 | **Tag** | Tag associé | Non | Text |
+| **Archivée** | Indicateur d’archivage indépendant du statut | Non | Bool |
+
+La colonne d’archivage est créée automatiquement dans la table des tâches si elle est absente. L’archivage d’un projet repose sur son champ **Statut** (`archived`) et s’applique aux tâches liées sans modifier leurs statuts ni leur indicateur d’archivage individuel.
+
+Les tâches archivées avec une ancienne version du widget (où `Statut` valait `archived`) restent reconnues comme archivées. Comme leur statut précédent n’a pas été conservé, leur restauration reprend le comportement historique et remet le statut à `todo`.
 
 ### Table des Utilisateurs (Users)
 

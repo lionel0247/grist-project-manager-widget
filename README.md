@@ -103,6 +103,7 @@ Widget de gestion de projets pour Grist avec tableau Kanban, vue tableau, diagra
 - **Diagramme de Gantt** : Visualisation timeline avec navigation par année, niveaux de zoom (jours, semaines, mois, année complète)
 - **Templates de tâches** : Créez et réutilisez des modèles de tâches préformatés
 - **Gestion des tâches** : Titre, statut, priorité, assigné, date de début, échéance
+- **Archivage** : archivez une tâche sans changer son statut, ou un projet (ses tâches sont archivées par héritage) ; filtrez les tâches et les projets archivés. Le Gantt et le planning les conservent visibles.
 - **Tableau de bord** : Statistiques total, à faire, en cours, terminées
 - **Recherche & filtres** : Par statut, priorité et mots-clés
 - **Interface bilingue** (Français / Anglais, détection automatique)
