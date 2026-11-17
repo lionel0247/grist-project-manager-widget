@@ -32,10 +32,6 @@ var i18n = {
     projectListTitle: 'Liste des Projets',
     projectListSubtitle: 'Voir les projets et leurs tâches associées',
     showArchivedTasks: 'Tâches archivées',
-    projectArchiveFilter: 'Projets :',
-    projectArchiveActive: 'Actifs',
-    projectArchiveArchived: 'Archivés',
-    projectArchiveAll: 'Tous',
     archivedByProject: 'Archivée par le projet',
     searchPlaceholder: 'Rechercher une tâche...',
     allStatuses: 'Tous les statuts',
@@ -389,10 +385,6 @@ var i18n = {
     projectListTitle: 'Project List',
     projectListSubtitle: 'View projects and their associated tasks',
     showArchivedTasks: 'Archived tasks',
-    projectArchiveFilter: 'Projects:',
-    projectArchiveActive: 'Active',
-    projectArchiveArchived: 'Archived',
-    projectArchiveAll: 'All',
     archivedByProject: 'Archived with project',
     searchPlaceholder: 'Search a task...',
     allStatuses: 'All statuses',
@@ -3038,6 +3030,7 @@ var tableFilterPriorities = [];
 // B2 : multi-filtres responsable/statut pour la vue Projets (tableau vide = tous)
 var projectListFilterLeads = [];
 var projectListFilterStatuses = [];
+var projectListFilterStatusesInitialized = false;
 
 function renderMultiFilter(kind) {
   var containerId;
@@ -3078,13 +3071,32 @@ function renderMultiFilter(kind) {
     selected = projectListFilterLeads;
     placeholder = currentLang === 'fr' ? 'Tous les responsables' : 'All leads';
   } else if (kind === 'projectStatus') {
-    // Filtre sur les statuts de projet
-    var statusOpts = [
-      { value: 'active', label: currentLang === 'fr' ? 'Actif' : 'Active' },
-      { value: 'completed', label: currentLang === 'fr' ? 'Terminé' : 'Completed' },
-      { value: 'archived', label: currentLang === 'fr' ? 'Archivé' : 'Archived' }
-    ];
-    opts = statusOpts;
+    var statusLabels = {
+      active: currentLang === 'fr' ? 'Actif' : 'Active',
+      completed: currentLang === 'fr' ? 'Terminé' : 'Completed',
+      archived: currentLang === 'fr' ? 'Archivé' : 'Archived'
+    };
+    var projectStatuses = { active: true, completed: true, archived: true };
+    projects.forEach(function(proj) {
+      var status = String(proj.Status || '').trim();
+      if (status) projectStatuses[status] = true;
+    });
+    var statusValues = Object.keys(projectStatuses);
+    statusValues.sort(function(a, b) {
+      if (a === 'archived') return 1;
+      if (b === 'archived') return -1;
+      var order = { active: 0, completed: 1 };
+      var aOrder = order[a] !== undefined ? order[a] : 2;
+      var bOrder = order[b] !== undefined ? order[b] : 2;
+      return aOrder - bOrder || a.localeCompare(b);
+    });
+    opts = statusValues.map(function(status) {
+      return { value: status, label: statusLabels[status] || status };
+    });
+    if (!projectListFilterStatusesInitialized) {
+      projectListFilterStatuses = statusValues.filter(function(status) { return status !== 'archived'; });
+      projectListFilterStatusesInitialized = true;
+    }
     selected = projectListFilterStatuses;
     placeholder = currentLang === 'fr' ? 'Tous les statuts' : 'All statuses';
   }
@@ -3476,7 +3488,6 @@ function resetFilters() {
 
 var showArchivedTasks = false;
 var tableShowArchivedTasks = false;
-var projectListArchiveFilter = 'active';
 
 function isTaskArchivedByProject(task) {
   if (!task || !task.Project_Id) return false;
@@ -4659,6 +4670,7 @@ function renderTableView() {
   var search = (document.getElementById('table-search').value || '').toLowerCase();
 
   var filtered = getFilteredTasks({ archiveMode: tableShowArchivedTasks ? 'all' : 'active' }).filter(function(task) {
+    if (tableShowArchivedTasks && isTaskArchivedByProject(task)) return false;
     if (tableFilterStatuses.length && tableFilterStatuses.indexOf(task.Status) === -1) return false;
     if (tableFilterPriorities.length && tableFilterPriorities.indexOf(task.Priority) === -1) return false;
     if (search) {
@@ -4702,7 +4714,7 @@ function renderTableView() {
   html += '<th style="' + thStyle + '" onclick="sortTable(\'Assignee\')">' + t('colAssignee') + sortIcon('Assignee') + '</th>';
   html += '<th style="' + thStyle + '" onclick="sortTable(\'Start_Date\')">' + t('colStartDate') + sortIcon('Start_Date') + '</th>';
   html += '<th style="' + thStyle + '" onclick="sortTable(\'Due_Date\')">' + t('colDueDate') + sortIcon('Due_Date') + '</th>';
-  html += '<th>' + t('colActions') + '</th>';
+  html += '<th class="task-actions-header">' + t('colActions') + '</th>';
   html += '</tr></thead><tbody>';
 
   for (var i = 0; i < filtered.length; i++) {
@@ -4792,19 +4804,14 @@ function renderTableView() {
   if (_scrollEl && _scrollTop) _scrollEl.scrollTop = _scrollTop;
 }
 
-function filterProjectArchive(value) {
-  projectListArchiveFilter = value || 'active';
-  renderProjectListView();
-}
-
 function renderProjectListView() { 
   // B2 : (re)construire les multi-filtres responsable/statut
   renderMultiFilter('lead');
   renderMultiFilter('projectStatus');
-  var archiveFilter = document.getElementById('project-list-archive-filter');
-  if (archiveFilter) projectListArchiveFilter = archiveFilter.value;
 
   var search = (document.getElementById('project-list-search').value || '').toLowerCase();
+  var archivedTasksCheckbox = document.getElementById('project-list-show-archived-tasks');
+  var showProjectArchivedTasks = !!(archivedTasksCheckbox && archivedTasksCheckbox.checked);
   
   // Récupérer les tâches déjà filtrées selon les critères globaux
   var filteredTasks = getFilteredTasks({ archiveMode: 'all' });
@@ -4829,11 +4836,6 @@ function renderProjectListView() {
   } else {
     projectsToShow = projects.slice();
   }
-  projectsToShow = projectsToShow.filter(function(p) {
-    if (projectListArchiveFilter === 'archived') return p.Status === 'archived';
-    if (projectListArchiveFilter === 'all') return true;
-    return p.Status !== 'archived';
-  });
   
   // Initialiser tous les projets comme repliés par défaut (sauf si déjà définis manuellement)
   // Note: On initialise expandedProjectListProjects mais on conserve allProjectListTasksExpanded
@@ -4885,7 +4887,7 @@ function renderProjectListView() {
   /* Colonne Priorité conservée pour réactivation ultérieure.
   html += '<th>' + t('colPriority') + '</th>';
   */
-  html += '<th>' + t('colActions') + '</th>';
+  html += '<th class="task-actions-header">' + t('colActions') + '</th>';
   html += '</tr></thead><tbody>';
   
   // Pour chaque projet, afficher une ligne avec les informations du projet
@@ -4898,7 +4900,7 @@ function renderProjectListView() {
     // Filtrer les tâches pour ce projet (en utilisant les tâches déjà filtrées)
     var projectTasks = filteredTasks.filter(function(task) {
       if (Number(task.Project_Id) !== Number(project.id)) return false;
-      return project.Status === 'archived' || !isTaskArchived(task);
+      return project.Status === 'archived' || showProjectArchivedTasks || !isTaskIndividuallyArchived(task);
     });
     
     // WBS : ordre manuel (Order) prioritaire, puis priorité et échéance
@@ -4922,7 +4924,7 @@ function renderProjectListView() {
     html += '<td>' + (projectLead ? '<span class="assignee-chip">👤 ' + sanitize(projectLead) + '</span>' : '') + '</td>';
     html += '<td>' + (projectManager ? '<span class="assignee-chip">👔 ' + sanitize(projectManager) + '</span>' : '') + '</td>';
     html += '<td colspan="3"></td>';
-    html += '<td>' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</td>';
+    html += '<td class="task-actions-cell"><div class="task-actions">' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</div></td>';
     html += '</tr>';
     
     // Lignes des tâches du projet

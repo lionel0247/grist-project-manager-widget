@@ -1176,14 +1176,6 @@
       background: white;
       cursor: pointer;
     }
-    .project-list-filters select {
-      padding: 8px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      font-size: 12px;
-      background: white;
-      cursor: pointer;
-    }
     .task-archive-badge {
       display: inline-flex;
       align-items: center;
@@ -1200,11 +1192,14 @@
     .task-list-table .task-actions-column {
       width: 112px;
     }
-    .task-list-table .task-actions-cell {
+    .data-table .task-actions-cell {
       padding-left: 6px;
       padding-right: 6px;
     }
-    .task-list-table .task-actions {
+    .data-table .task-actions-header {
+      text-align: center;
+    }
+    .data-table .task-actions {
       display: flex;
       align-items: center;
       justify-content: center;

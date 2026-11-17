@@ -145,14 +145,12 @@
         <button class="btn-secondary btn-sm" onclick="expandAllProjectTasks()" title="Tout déplier">⊞</button>
         <button class="btn-secondary btn-sm" onclick="collapseAllProjectTasks()" title="Tout replier">⊟</button>
         <input type="text" id="project-list-search" placeholder="Rechercher un projet..." data-i18n-placeholder="projectSearchPlaceholder" oninput="renderProjectListView()" />
-        <label for="project-list-archive-filter" data-i18n="projectArchiveFilter">Projets :</label>
-        <select id="project-list-archive-filter" onchange="filterProjectArchive(this.value)">
-          <option value="active" data-i18n="projectArchiveActive">Actifs</option>
-          <option value="archived" data-i18n="projectArchiveArchived">Archivés</option>
-          <option value="all" data-i18n="projectArchiveAll">Tous</option>
-        </select>
         <div id="ms-lead" class="filter-combo"></div>
         <div id="ms-project-status" class="filter-combo"></div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;">
+          <input type="checkbox" id="project-list-show-archived-tasks" onchange="renderProjectListView()">
+          <span data-i18n="showArchivedTasks">Tâches archivées</span>
+        </label>
       </div>
       <div id="project-list-view"></div>
     </div>
