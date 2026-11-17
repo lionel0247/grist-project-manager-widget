@@ -9731,7 +9731,8 @@ function taskRecordHasChanges(task, record) {
     ['tag', 'Tag'],
     ['recurrence', 'Recurrence'],
     ['projectId', 'Project_Id'],
-    ['duration', 'Duration']
+    ['duration', 'Duration'],
+    ['archived', 'Archived']
   ];
   var extraFields = ['Accountable', 'Consulted', 'Informed', 'Extension_Date', 'Auto_Extend'];
 
