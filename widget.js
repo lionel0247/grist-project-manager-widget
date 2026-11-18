@@ -4926,7 +4926,7 @@ function renderProjectListView() {
     html += '<td>' + (projectLead ? '<span class="assignee-chip">👤 ' + sanitize(projectLead) + '</span>' : '') + '</td>';
     html += '<td>' + (projectManager ? '<span class="assignee-chip">👔 ' + sanitize(projectManager) + '</span>' : '') + '</td>';
     html += '<td colspan="3"></td>';
-    html += '<td class="task-actions-cell"><div class="task-actions">' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</div></td>';
+    html += '<td class="task-actions-cell"><div class="task-actions"><button class="btn-icon" onclick="startNewTaskFast(null, null, { projectId: ' + project.id + ' })" title="' + t('newTask') + '">📝</button>' + (isOwner ? '<button class="btn-icon" onclick="openProjectModalForEdit(' + project.id + ')" title="' + t('editProject') + '">✏️</button>' : '') + '</div></td>';
     html += '</tr>';
     
     // Lignes des tâches du projet
@@ -7828,6 +7828,7 @@ var pendingDraftCreation = null; // { tempId, promise } : création optimiste en
 async function startNewTask(defaultStatus, dateStr, prefill) {
   await refreshCurrentUserEmail();
   prefill = prefill || {};
+  var taskProjectId = prefill.projectId !== undefined ? prefill.projectId : currentProjectId;
   var statuses = getKanbanStatuses();
   var record = {};
   setField(record, 'tasks', 'title', prefill.title || '');
@@ -7840,11 +7841,11 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
   if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
   if (prefill.recurrence && prefill.recurrence !== 'none')   setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
-  if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
+  if (taskProjectId) setField(record, 'tasks', 'projectId', taskProjectId);
   setTaskCreationAudit(record);
 
   // WBS : nouvelle tâche en fin de liste de son projet
-  var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
+  var _projTasksForOrder = wbsProjectTasksSorted(taskProjectId || null);
   record.Order = _projTasksForOrder.length + 1;
   record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
@@ -7863,6 +7864,7 @@ async function startNewTask(defaultStatus, dateStr, prefill) {
 async function startNewTaskFast(defaultStatus, dateStr, prefill) {
   await refreshCurrentUserEmail();
   prefill = prefill || {};
+  var taskProjectId = prefill.projectId !== undefined ? prefill.projectId : currentProjectId;
   var statuses = getKanbanStatuses();
   var statusKey = defaultStatus || (statuses[0] && statuses[0].key) || 'todo';
   var startDate = dateStr ? toEpoch(dateStr) : null;
@@ -7887,7 +7889,7 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
     Created_By: getCurrentUserDisplayName(),
     Last_Modified_By: null,
     Last_Modified_At: null,
-    Project_Id: currentProjectId || null,
+    Project_Id: taskProjectId || null,
     Duration: null,
     Accountable: '',
     Consulted: '',
@@ -7912,11 +7914,11 @@ async function startNewTaskFast(defaultStatus, dateStr, prefill) {
   if (prefill.tag) setField(record, 'tasks', 'tag', prefill.tag);
   if (prefill.recurrence && prefill.recurrence !== 'none') setField(record, 'tasks', 'recurrence', prefill.recurrence);
   if (prefill.estimatedHours) setField(record, 'tasks', 'estimatedHours', prefill.estimatedHours);
-  if (currentProjectId) setField(record, 'tasks', 'projectId', currentProjectId);
+  if (taskProjectId) setField(record, 'tasks', 'projectId', taskProjectId);
   setTaskCreationAudit(record);
 
   // WBS : nouvelle tâche en fin de liste de son projet
-  var _projTasksForOrder = wbsProjectTasksSorted(currentProjectId || null);
+  var _projTasksForOrder = wbsProjectTasksSorted(taskProjectId || null);
   record.Order = _projTasksForOrder.length + 1;
   record.Auto_Extend = true;
   if (dateStr) { setField(record, 'tasks', 'startDate', toEpoch(dateStr)); setField(record, 'tasks', 'dueDate', toEpoch(dateStr)); }
