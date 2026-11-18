@@ -10298,9 +10298,13 @@ function renderStatsView() {
   document.getElementById('stats-overdue-count').textContent = overdueCount;
   
   // Calculate total time from time entries
+  var nonArchivedTaskIds = {};
+  tasks.forEach(function(task) {
+    if (!isTaskArchived(task)) nonArchivedTaskIds[String(task.id)] = true;
+  });
   var totalMinutes = 0;
   timeEntries.forEach(function(te) {
-    if (te.Duration) totalMinutes += te.Duration;
+    if (nonArchivedTaskIds[String(te.Task_Id)] && te.Duration) totalMinutes += te.Duration;
   });
   var totalHours = Math.round(totalMinutes / 60);
   document.getElementById('stats-total-time').textContent = totalHours + 'h';
@@ -10538,6 +10542,7 @@ function renderBurndownChart() {
   var labels = [];
   var remaining = [];
   var completed = [];
+  var scopeTotals = [];
 
   for (var w = weeks - 1; w >= 0; w--) {
     var weekEnd = new Date(thisMonday.getTime() - (w * 7 * 86400000));
@@ -10562,10 +10567,12 @@ function renderBurndownChart() {
 
     remaining.push(remainByThen);
     completed.push(doneByThen);
+    scopeTotals.push(totalByThen);
   }
 
-  var maxVal = Math.max.apply(null, remaining.concat(completed).concat([1]));
+  var maxVal = Math.max.apply(null, scopeTotals.concat([1]));
   var chartH = 180;
+  var plotH = chartH - 20;
   var barW = Math.max(20, Math.floor(300 / weeks));
 
   var html = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">';
@@ -10585,8 +10592,8 @@ function renderBurndownChart() {
     var x2 = (li + 1) * (barW + 8) + barW / 2;
     var idealVal1 = startRemaining - (startRemaining / (labels.length - 1)) * li;
     var idealVal2 = startRemaining - (startRemaining / (labels.length - 1)) * (li + 1);
-    var y1 = chartH - (idealVal1 / maxVal) * chartH;
-    var y2 = chartH - (idealVal2 / maxVal) * chartH;
+    var y1 = chartH - (idealVal1 / maxVal) * plotH;
+    var y2 = chartH - (idealVal2 / maxVal) * plotH;
     html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#94a3b8" stroke-dasharray="4,3" stroke-width="1.5"/>';
   }
   html += '</svg>';
@@ -10594,13 +10601,13 @@ function renderBurndownChart() {
   // Bars
   html += '<div style="display:flex;align-items:flex-end;gap:8px;height:' + chartH + 'px;">';
   for (var bi = 0; bi < labels.length; bi++) {
-    var remH = (remaining[bi] / maxVal) * (chartH - 20);
-    var compH = (completed[bi] / maxVal) * (chartH - 20);
+    var remH = (remaining[bi] / maxVal) * plotH;
+    var compH = (completed[bi] / maxVal) * plotH;
     html += '<div style="display:flex;flex-direction:column;align-items:center;width:' + barW + 'px;">';
-    html += '<div style="font-size:9px;color:#64748b;margin-bottom:2px;">' + remaining[bi] + '</div>';
-    html += '<div style="width:100%;display:flex;flex-direction:column;gap:1px;">';
-    html += '<div style="height:' + remH + 'px;background:#ef4444;border-radius:3px 3px 0 0;min-height:2px;"></div>';
-    html += '<div style="height:' + compH + 'px;background:#22c55e;border-radius:0 0 3px 3px;min-height:2px;"></div>';
+    html += '<div style="font-size:9px;color:#64748b;margin-bottom:2px;">' + remaining[bi] + '/' + scopeTotals[bi] + '</div>';
+    html += '<div style="width:100%;display:flex;flex-direction:column;">';
+    if (remaining[bi] > 0) html += '<div style="height:' + remH + 'px;background:#ef4444;border-radius:3px 3px 0 0;"></div>';
+    if (completed[bi] > 0) html += '<div style="height:' + compH + 'px;background:#22c55e;border-radius:0 0 3px 3px;"></div>';
     html += '</div>';
     html += '</div>';
   }
