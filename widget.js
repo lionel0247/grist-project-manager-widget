@@ -4483,6 +4483,7 @@ async function archiveTask(taskId) {
     if (!task || isTaskArchived(task)) return;
     var record = {};
     setField(record, 'tasks', 'archived', true);
+    var logDetails = getTaskUpdateDetails(task, record);
     var modificationTracked = await setTaskModificationAudit(record, task, draftTaskId === taskId);
     await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]);
     if (task) {
@@ -4493,7 +4494,7 @@ async function archiveTask(taskId) {
       }
     }
     showToast(currentLang === 'fr' ? 'Tâche archivée' : 'Task archived', 'success');
-    logActivity('task_archived', taskId, task ? task.Title : '', '');
+    logActivity('task_archived', taskId, task.Title, logDetails);
     refreshAllViews();
   } catch (e) {
     console.error('Error archiving task:', e);
@@ -4504,13 +4505,14 @@ async function archiveTask(taskId) {
 async function restoreTask(taskId) {
   try {
     var task = tasks.find(function(t) { return t.id === taskId; });
-    if (!task || (!task.Archived && task.Status !== 'archived')) return;
+    if (!task || isTaskArchivedByProject(task) || (!task.Archived && task.Status !== 'archived')) return;
     var oldStatus = task.Status;
     var record = {};
     setField(record, 'tasks', 'archived', false);
     if (task.Status === 'archived') {
       record[getColumnName('tasks', 'status')] = 'todo';
     }
+    var logDetails = getTaskUpdateDetails(task, record);
     var modificationTracked = await setTaskModificationAudit(record, task, draftTaskId === taskId);
     await grist.docApi.applyUserActions([['UpdateRecord', TASKS_TABLE, taskId, record]]);
     if (task) {
@@ -4522,7 +4524,7 @@ async function restoreTask(taskId) {
       }
     }
     showToast(currentLang === 'fr' ? 'Tâche restaurée' : 'Task restored', 'success');
-    logActivity('task_restored', taskId, task ? task.Title : '', '');
+    logActivity('task_restored', taskId, task.Title, logDetails);
     if (task && oldStatus === 'archived') {
       await evaluateAutomationRules(Object.assign({}, task, { Status: 'todo' }), { status: { from: oldStatus, to: 'todo' } });
     }
@@ -9861,6 +9863,72 @@ async function createTask() {
   }
 }
 
+function getTaskUpdateDetails(task, record) {
+  if (!task) return '';
+
+  var fields = [
+    { key: 'title', property: 'Title', label: t('fieldTitle').replace(/\s*\*$/, '') },
+    { key: 'description', property: 'Description', label: t('fieldDescription') },
+    { key: 'status', property: 'Status', label: t('fieldStatus'), type: 'status' },
+    { key: 'priority', property: 'Priority', label: t('fieldPriority'), type: 'priority' },
+    { key: 'assignee', property: 'Assignee', label: t('fieldAssignee'), type: 'people' },
+    { key: 'group', property: 'Group_Name', label: t('fieldGroup') },
+    { key: 'startDate', property: 'Start_Date', label: t('fieldStartDate'), type: 'date' },
+    { key: 'dueDate', property: 'Due_Date', label: t('fieldDueDate'), type: 'date' },
+    { key: 'category', property: 'Category', label: t('fieldCategory') },
+    { key: 'tag', property: 'Tag', label: t('tag') },
+    { key: 'recurrence', property: 'Recurrence', label: t('recurrence'), type: 'recurrence' },
+    { key: 'projectId', property: 'Project_Id', label: t('project'), type: 'project' },
+    { key: 'duration', property: 'Duration', label: currentLang === 'fr' ? 'Durée' : 'Duration', type: 'duration' },
+    { key: 'archived', property: 'Archived', label: currentLang === 'fr' ? 'Archivée' : 'Archived', type: 'boolean' },
+    { property: 'Accountable', label: t('raciAccountable'), type: 'people' },
+    { property: 'Consulted', label: t('raciConsulted'), type: 'people' },
+    { property: 'Informed', label: t('raciInformed'), type: 'people' },
+    { property: 'Extension_Date', label: t('extensionDate'), type: 'date' },
+    { property: 'Auto_Extend', label: t('autoExtend'), type: 'boolean' }
+  ];
+
+  function normalize(value, type) {
+    if (type === 'project') return value == null || value === '' ? 0 : Number(value);
+    if (type === 'date') return value == null || value === '' || Number(value) === 0 ? null : Number(value);
+    if (type === 'status') return value || 'todo';
+    if (type === 'priority') return value || 'medium';
+    if (type === 'recurrence') return value || 'none';
+    if (type === 'duration') return getRadioValueFromDuration(value);
+    if (type === 'boolean') return !!value;
+    if (type === 'people') {
+      var people = Array.isArray(value) ? value : String(value || '').split(',');
+      return people.map(function(person) { return String(person).trim(); }).filter(Boolean).join(', ');
+    }
+    return value == null ? '' : String(value);
+  }
+
+  function format(value, type) {
+    if (type === 'status') return statusLabel(value);
+    if (type === 'priority') return priorityLabel(value);
+    if (type === 'date') return formatDate(value) || '—';
+    if (type === 'project') return value ? (getProjectName(value) || String(value)) : '—';
+    if (type === 'people' && value) {
+      return value.split(', ').map(function(person) { return getUserDisplayName(person); }).join(', ');
+    }
+    if (type === 'boolean') return value ? (currentLang === 'fr' ? 'Oui' : 'Yes') : (currentLang === 'fr' ? 'Non' : 'No');
+    return value === '' ? '—' : String(value);
+  }
+
+  var details = [];
+  fields.forEach(function(field) {
+    var column = field.key ? getColumnName('tasks', field.key) : field.property;
+    if (!Object.prototype.hasOwnProperty.call(record, column)) return;
+
+    var oldValue = normalize(task[field.property], field.type);
+    var newValue = normalize(record[column], field.type);
+    if (oldValue !== newValue) {
+      details.push(field.label + ': ' + format(oldValue, field.type) + ' → ' + format(newValue, field.type));
+    }
+  });
+  return details.join('; ');
+}
+
 async function updateTask(taskId) {
   var title = document.getElementById('task-title').value.trim();
   if (!title) return;
@@ -9945,10 +10013,10 @@ async function updateTask(taskId) {
       ['UpdateRecord', TASKS_TABLE, taskId, record]
     ]);
     showToast(t('taskUpdated'), 'success');
-    var logDetails = [];
+    var logDetails = getTaskUpdateDetails(task, record);
     var autoChanges = {};
     if (task) {
-      if (task.Status !== newStatus) { autoChanges.status = { from: task.Status, to: newStatus }; logDetails.push(task.Status + ' → ' + newStatus); }
+      if (task.Status !== newStatus) autoChanges.status = { from: task.Status, to: newStatus };
       var newPriority = priorityEl ? priorityEl.value : task.Priority;
       if (task.Priority !== newPriority) autoChanges.priority = { from: task.Priority, to: newPriority };
       var newAssignee = editAssignees.join(', ');
@@ -9957,7 +10025,7 @@ async function updateTask(taskId) {
     if (Object.keys(autoChanges).length > 0) {
       await evaluateAutomationRules(Object.assign({}, task, record, { id: taskId }), autoChanges);
     }
-    logActivity(autoChanges.status ? 'status_changed' : 'task_updated', taskId, title, logDetails.join(', '));
+    if (logDetails) logActivity(autoChanges.status ? 'status_changed' : 'task_updated', taskId, title, logDetails);
 
     // Notification intégrée des utilisateurs concernés (R/A/C/I) à la modification
     var concernedUpd = editAssignees.slice();
