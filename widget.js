@@ -970,6 +970,8 @@ var ATTACHMENTS_TABLE = 'PM_Attachments';
 var USER_INFO_TABLE = 'PM_UserInfo';
 var attachments = [];
 var activityLog = [];
+var activityLogHasUserName = false;
+var userInfoHasRequestId = false;
 
 // Default table names — used to detect remapping: if a table var differs from
 // its default it means the user mapped it to an existing table, so we must NOT
@@ -1034,7 +1036,7 @@ var currentUserEmail = '';
 var currentUserName = '';
 
 function getCurrentUserDisplayName() {
-  return (currentUserName || '').trim() || currentUserEmail;
+  return getUserDisplayName(currentUserName || currentUserEmail);
 }
 
 // =============================================================================
@@ -1758,16 +1760,18 @@ function getCustomFieldTypeLabel(type) {
 
 function getUserDisplayName(emailOrName) {
   if (!emailOrName) return '';
-  // Try to find user by email
-  var user = users.find(function(u) { 
-    return u.Email === emailOrName || u.Name === emailOrName; 
+  var ident = String(emailOrName).trim();
+  if (!ident) return '';
+  var key = ident.toLowerCase();
+  var user = users.find(function(u) {
+    return String(u.Email || '').trim().toLowerCase() === key ||
+      String(u.Name || '').trim().toLowerCase() === key;
   });
   if (user && user.Name) return user.Name;
-  // If no user found or no name, extract name from email
-  if (emailOrName.indexOf('@') !== -1) {
-    return emailOrName.split('@')[0];
+  if (ident.indexOf('@') !== -1) {
+    return ident.split('@')[0];
   }
-  return emailOrName;
+  return ident;
 }
 
 // --- Résolution d'identité -------------------------------------------------
@@ -2284,12 +2288,25 @@ async function ensureTables() {
         ['AddTable', ACTIVITY_LOG_TABLE, [
           { id: 'Timestamp', type: 'Date' },
           { id: 'User_Email', type: 'Text' },
+          { id: 'User_Name', type: 'Text' },
           { id: 'Action', type: 'Text' },
           { id: 'Task_Id', type: 'Int' },
           { id: 'Task_Title', type: 'Text' },
           { id: 'Details', type: 'Text' }
         ]]
       ]);
+    }
+    var activityLogColumns = Object.keys(await grist.docApi.fetchTable(ACTIVITY_LOG_TABLE));
+    activityLogHasUserName = activityLogColumns.indexOf('User_Name') !== -1;
+    if (!activityLogHasUserName) {
+      try {
+        await grist.docApi.applyUserActions([
+          ['AddColumn', ACTIVITY_LOG_TABLE, 'User_Name', { type: 'Text' }]
+        ]);
+        activityLogHasUserName = true;
+      } catch (activityColumnError) {
+        console.warn('[GristPM] Could not add User_Name to the activity log:', activityColumnError.message);
+      }
     }
 
     // Migration: Add missing columns to existing PM_Tasks table
@@ -2808,6 +2825,7 @@ async function loadAllData() {
           id: logData.id[ai],
           Timestamp: logData.Timestamp ? logData.Timestamp[ai] : null,
           User_Email: logData.User_Email ? logData.User_Email[ai] : '',
+          User_Name: logData.User_Name ? logData.User_Name[ai] : '',
           Action: logData.Action ? logData.Action[ai] : '',
           Task_Id: logData.Task_Id ? logData.Task_Id[ai] : null,
           Task_Title: logData.Task_Title ? logData.Task_Title[ai] : '',
@@ -8582,10 +8600,10 @@ function openEditTaskModal(taskId, preserveAssignees) {
   // Task creation and modification info
   html += '<div class="detail-card">';
   html += '<h4>📋 ' + t('taskTracking') + '</h4>';
-  html += '<div class="detail-info-row"><span class="info-label">' + t('creation') + ' :</span><span class="info-value">' + sanitize(task.Created_By || '--') + '</span></div>';
+  html += '<div class="detail-info-row"><span class="info-label">' + t('creation') + ' :</span><span class="info-value">' + sanitize(getUserDisplayName(task.Created_By) || '--') + '</span></div>';
   html += '<div class="detail-info-row"><span class="info-label">Date :</span><span class="info-value">' + sanitize(formatDateTime(task.Created_At) || '--') + '</span></div>';
   html += '<div style="margin-top:12px;">';
-  html += '<div class="detail-info-row"><span class="info-label">' + t('lastModification') + ' :</span><span class="info-value">' + sanitize(task.Last_Modified_By || '--') + '</span></div>';
+  html += '<div class="detail-info-row"><span class="info-label">' + t('lastModification') + ' :</span><span class="info-value">' + sanitize(getUserDisplayName(task.Last_Modified_By) || '--') + '</span></div>';
   html += '<div class="detail-info-row"><span class="info-label">Date :</span><span class="info-value">' + sanitize(formatDateTime(task.Last_Modified_At) || '--') + '</span></div>';
   html += '</div>';
   html += '</div>';
@@ -10711,13 +10729,16 @@ var helperWriteLastResult = false;
 async function refreshCurrentUserEmail() {
   helperWriteLastResult = false;
   currentUserName = '';
-  // Reserver une ligne dediee a cette session : le rowId est alloue par Grist et la
-  // formule declenchee user.Email est evaluee a l'identite de CETTE session.
+  var requestId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   var rowId = null;
+  var result = null;
+  var identityRecord = {};
+  if (userInfoHasRequestId) identityRecord.Request_Id = requestId;
   try {
-    var result = await grist.docApi.applyUserActions([
-      ['AddRecord', USER_INFO_TABLE, null, {}]
+    result = await grist.docApi.applyUserActions([
+      ['AddRecord', USER_INFO_TABLE, null, identityRecord]
     ]);
+    helperWriteLastResult = true;
     // Le retour de applyUserActions contient les rowIds crees. Selon la version du
     // SDK grist-plugin, le retour peut etre :
     // - { retValues: [{ id: 123 }] } (objet avec tableau de retValues)
@@ -10733,33 +10754,35 @@ async function refreshCurrentUserEmail() {
       }
     }
     if (!rowId) {
-      console.error('[PM_UserInfo] CRITICAL: Could not extract rowId from AddRecord result:', result);
-      return; // Abandonner si on ne peut pas identifier la ligne
+      console.warn('[PM_UserInfo] Could not extract rowId; locating identity row by request id:', result);
     }
-    helperWriteLastResult = true;
   } catch (writeErr) {
-    console.log('Could not add identity row (read-only?):', writeErr.message);
-    return; // session en lecture seule : on garde la valeur actuelle de currentUserEmail
+    console.warn('Could not add identity row (read-only?):', writeErr.message);
   }
 
   try {
-    // Relire EXACTEMENT la ligne de cette session (jamais records[0], qui peut etre
-    // la ligne d'une autre session ouverte concurremment).
     var tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
     var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
     if (tableResp.ok) {
       var tableData = await tableResp.json();
-      var mine = (tableData.records || []).filter(function(rec) { return rec.id === rowId; });
+      var mine = (tableData.records || []).filter(function(rec) {
+        return (rowId && rec.id === rowId) ||
+          (userInfoHasRequestId && rec.fields && rec.fields.Request_Id === requestId);
+      });
       if (mine.length > 0) {
+        rowId = mine[0].id;
         if (mine[0].fields.UserEmail) currentUserEmail = mine[0].fields.UserEmail;
         if (mine[0].fields.UserName) currentUserName = mine[0].fields.UserName;
       }
     } else {
-      // Repli : fetchTable renvoie toutes les lignes ; on isole la notre par rowId.
+      // Repli : fetchTable renvoie toutes les lignes ; le Request_Id isole cette operation.
       var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
       if (userInfoData && userInfoData.id) {
         for (var ri = 0; ri < userInfoData.id.length; ri++) {
-          if (userInfoData.id[ri] === rowId) {
+          if ((rowId && userInfoData.id[ri] === rowId) ||
+              (userInfoHasRequestId && userInfoData.Request_Id &&
+                userInfoData.Request_Id[ri] === requestId)) {
+            rowId = userInfoData.id[ri];
             if (userInfoData.UserEmail && userInfoData.UserEmail[ri]) currentUserEmail = userInfoData.UserEmail[ri];
             if (userInfoData.UserName && userInfoData.UserName[ri]) currentUserName = userInfoData.UserName[ri];
             break;
@@ -10770,8 +10793,24 @@ async function refreshCurrentUserEmail() {
   } catch (readErr) {
     console.warn('Could not read identity row:', readErr.message);
   } finally {
-    // Nettoyer UNIQUEMENT la ligne de cette session — jamais celle des autres sessions,
-    // qui peuvent etre en cours de lecture par leur propre widget.
+    // If AddRecord did not return a rowId, find only this operation's marked row.
+    if (!rowId) {
+      try {
+        var cleanupData = await grist.docApi.fetchTable(USER_INFO_TABLE);
+        if (userInfoHasRequestId && cleanupData && cleanupData.id && cleanupData.Request_Id) {
+          for (var ci = 0; ci < cleanupData.id.length; ci++) {
+            if (cleanupData.Request_Id[ci] === requestId) {
+              rowId = cleanupData.id[ci];
+              if (!currentUserEmail && cleanupData.UserEmail) currentUserEmail = cleanupData.UserEmail[ci] || '';
+              if (!currentUserName && cleanupData.UserName) currentUserName = cleanupData.UserName[ci] || '';
+              break;
+            }
+          }
+        }
+      } catch (lookupErr) {
+        console.error('[PM_UserInfo] Could not locate identity row for cleanup:', lookupErr.message);
+      }
+    }
     if (rowId) {
       try {
         await grist.docApi.applyUserActions([
@@ -10786,8 +10825,8 @@ async function refreshCurrentUserEmail() {
           console.error('[PM_UserInfo] Retry failed:', retryErr.message);
         }
       }
-    } else {
-      console.error('[PM_UserInfo] CRITICAL: rowId is null, cannot clean up!');
+    } else if (helperWriteLastResult) {
+      console.error('[PM_UserInfo] CRITICAL: identity row was created but could not be located for cleanup.');
     }
   }
 }
@@ -10810,6 +10849,7 @@ async function logActivity(action, taskId, taskTitle, details) {
       Task_Title: taskTitle || '',
       Details: details || ''
     };
+    if (activityLogHasUserName) record.User_Name = getCurrentUserDisplayName();
     await grist.docApi.applyUserActions([['AddRecord', ACTIVITY_LOG_TABLE, null, record]]);
     activityLog.push(record);
   } catch (e) {
@@ -10863,7 +10903,7 @@ function renderActivityLog() {
     }
     var icon = ACTION_ICONS[entry.Action] || '📋';
     var actionText = t(ACTION_I18N[entry.Action] || entry.Action);
-    var userName = getUserDisplayName(entry.User_Email);
+    var userName = getUserDisplayName(entry.User_Name || entry.User_Email);
     var timeStr = dateObj.toLocaleTimeString(currentLang === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 
     html += '<div class="activity-entry" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f8fafc;"';
@@ -12854,9 +12894,20 @@ if (!isInsideGrist()) {
           ['AddColumn', USER_INFO_TABLE, 'UserName', { type: 'Text' }]
         ]);
       }
+      userInfoHasRequestId = userInfoColumns.indexOf('Request_Id') !== -1;
+      if (!userInfoHasRequestId) {
+        try {
+          await grist.docApi.applyUserActions([
+            ['AddColumn', USER_INFO_TABLE, 'Request_Id', { type: 'Text' }]
+          ]);
+          userInfoHasRequestId = true;
+        } catch (requestIdError) {
+          console.warn('[PM_UserInfo] Could not add Request_Id; rowId cleanup remains enabled:', requestIdError.message);
+        }
+      }
       await grist.docApi.applyUserActions([
         ['ModifyColumn', USER_INFO_TABLE, 'UserEmail', {
-          isFormula: false,
+          isFormula: true,
           formula: 'user.Email',
           recalcWhen: 2,
           recalcDeps: null
@@ -12865,7 +12916,7 @@ if (!isInsideGrist()) {
       try {
         await grist.docApi.applyUserActions([
           ['ModifyColumn', USER_INFO_TABLE, 'UserName', {
-            isFormula: false,
+            isFormula: true,
             formula: 'user.Name',
             recalcWhen: 2,
             recalcDeps: null
