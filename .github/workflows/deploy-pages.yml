@@ -1,0 +1,59 @@
+name: Deploy Pages (prod + test)
+
+on:
+  push:
+    branches: [main, Dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Récupération des deux branches
+      - name: Checkout main (prod)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout Dev (test)
+        uses: actions/checkout@v4
+        with:
+          ref: Dev
+          path: dev
+
+      # Assemblage du site : main -> racine, Dev -> /dev/
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          rsync -a --exclude='.git' --exclude='.github' main/ site/
+          mkdir -p site/dev
+          rsync -a --exclude='.git' --exclude='.github' dev/ site/dev/
+
+      - name: List site content
+        run: find site -maxdepth 2 | sort
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
