@@ -10710,6 +10710,7 @@ var helperWriteLastResult = false;
 
 async function refreshCurrentUserEmail() {
   helperWriteLastResult = false;
+  currentUserEmail = '';
   currentUserName = '';
   // Reserver une ligne dediee a cette session : le rowId est alloue par Grist et la
   // formule declenchee user.Email est evaluee a l'identite de CETTE session.
@@ -10743,28 +10744,35 @@ async function refreshCurrentUserEmail() {
   }
 
   try {
-    // Relire EXACTEMENT la ligne de cette session (jamais records[0], qui peut etre
-    // la ligne d'une autre session ouverte concurremment).
-    var tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
-    var tableResp = await fetch(tokenInfo.baseUrl + '/tables/' + USER_INFO_TABLE + '/records?auth=' + tokenInfo.token);
-    if (tableResp.ok) {
-      var tableData = await tableResp.json();
-      var mine = (tableData.records || []).filter(function(rec) { return rec.id === rowId; });
-      if (mine.length > 0) {
-        if (mine[0].fields.UserEmail) currentUserEmail = mine[0].fields.UserEmail;
-        if (mine[0].fields.UserName) currentUserName = mine[0].fields.UserName;
-      }
-    } else {
-      // Repli : fetchTable renvoie toutes les lignes ; on isole la notre par rowId.
-      var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
-      if (userInfoData && userInfoData.id) {
-        for (var ri = 0; ri < userInfoData.id.length; ri++) {
-          if (userInfoData.id[ri] === rowId) {
-            if (userInfoData.UserEmail && userInfoData.UserEmail[ri]) currentUserEmail = userInfoData.UserEmail[ri];
-            if (userInfoData.UserName && userInfoData.UserName[ri]) currentUserName = userInfoData.UserName[ri];
-            break;
+    // Relire la ligne par l'API du widget, sans dépendre d'un fetch REST inter-origines.
+    var identityReadError = null;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        var userInfoData = await grist.docApi.fetchTable(USER_INFO_TABLE);
+        if (userInfoData && userInfoData.id) {
+          for (var ri = 0; ri < userInfoData.id.length; ri++) {
+            if (String(userInfoData.id[ri]) === String(rowId)) {
+              currentUserEmail = String(userInfoData.UserEmail && userInfoData.UserEmail[ri] || '').trim();
+              currentUserName = String(userInfoData.UserName && userInfoData.UserName[ri] || '').trim();
+              break;
+            }
           }
         }
+        identityReadError = null;
+      } catch (readAttemptError) {
+        identityReadError = readAttemptError;
+        console.warn('Could not read identity row through fetchTable:', readAttemptError.message);
+      }
+
+      if (currentUserEmail) break;
+      if (attempt < 2) await new Promise(function(resolve) { setTimeout(resolve, 150); });
+    }
+
+    if (!currentUserEmail) {
+      if (identityReadError) {
+        console.error('[PM_UserInfo] Could not read UserEmail for row ' + rowId + ':', identityReadError);
+      } else {
+        console.warn('[PM_UserInfo] UserEmail is empty for row ' + rowId);
       }
     }
   } catch (readErr) {
