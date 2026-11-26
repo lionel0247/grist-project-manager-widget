@@ -74,7 +74,7 @@ var i18n = {
     modalNewTask: 'Nouvelle tâche',
     modalEditTask: 'Modifier la tâche',
     modalNewTemplate: 'Nouveau modèle de tâche',
-    fieldTitle: 'Titre *',
+    fieldTitle: 'Titre',
     fieldDescription: 'Description',
     fieldStatus: 'Statut',
     fieldPriority: 'Priorité',
@@ -427,7 +427,7 @@ var i18n = {
     modalNewTask: 'New task',
     modalEditTask: 'Edit task',
     modalNewTemplate: 'New task template',
-    fieldTitle: 'Title *',
+    fieldTitle: 'Title',
     fieldDescription: 'Description',
     fieldStatus: 'Status',
     fieldPriority: 'Priority',
@@ -4605,6 +4605,11 @@ async function onDrop(e) {
       draggedTaskId = null;
       return;
     }
+    if (field === 'Project_Id' && !newValue) {
+      showToast(t('project') + ' ' + t('required'), 'error');
+      draggedTaskId = null;
+      return;
+    }
     try {
       var draggedTask = tasks.find(function(t) { return t.id === draggedTaskId; });
       var oldVal = draggedTask ? draggedTask[field] : '';
@@ -5105,6 +5110,7 @@ async function wbsPersistTaskOrder(taskList) {
 async function wbsMoveTask(taskId, targetProjectId, targetIndex) {
   var task = tasks.find(function (tk) { return tk.id === taskId; });
   if (!task) return;
+  if (!targetProjectId) { showToast(t('project') + ' ' + t('required'), 'error'); return; }
   if (task.Project_Id !== targetProjectId) {
     try {
       await grist.docApi.applyUserActions([
@@ -7982,6 +7988,14 @@ function openEditTaskModal(taskId, preserveAssignees) {
     editInformed = task.Informed ? task.Informed.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
   }
 
+  // Auto-set task group to first assignee's group if task has no group
+  if (!task.Group_Name && editAssignees.length > 0) {
+    var firstAssigneeGroup = getUserGroup(editAssignees[0]);
+    if (firstAssigneeGroup) {
+      task.Group_Name = firstAssigneeGroup;
+    }
+  }
+
   var groupOptions = '<option value="">--</option>';
   for (var i = 0; i < groups.length; i++) {
     var sel = groups[i].Name === task.Group_Name ? ' selected' : '';
@@ -8666,12 +8680,26 @@ function renderRaciField(letter, label, selectSuffix, varName) {
   return html;
 }
 
+function getUserGroup(userIdent) {
+  // Find user by email or name and return their group
+  var user = findUserByIdent(userIdent);
+  return user ? (user.Group_Name || '') : '';
+}
+
 function addRaciChip(varName, selectSuffix) {
   var sel = document.getElementById(selectSuffix + '-select');
   var arr = getRaciArray(varName);
   var val = sel.value;
   if (!val || arr.indexOf(val) !== -1) return;
   arr.push(val);
+  // Auto-set task group to first assignee's group
+  if (varName === 'editAssignees' && arr.length === 1) {
+    var group = getUserGroup(val);
+    var groupEl = document.getElementById('task-group');
+    if (groupEl && group) {
+      groupEl.value = group;
+    }
+  }
   var container = document.getElementById(selectSuffix + '-chips');
   if (container) container.innerHTML = renderRaciChips(varName);
   sel.value = '';
@@ -8789,9 +8817,14 @@ async function persistTaskFormFields(taskId) {
   if (taskId == null) return;
   var titleEl = document.getElementById('task-title');
   if (!titleEl) return;                       // l'éditeur n'est pas ouvert : rien à figer
-  var record = {};
-  setField(record, 'tasks', 'title', titleEl.value.trim());
+  var title = titleEl.value.trim();
+  if (!title) { showToast(t('fieldTitle') + ' ' + t('required'), 'error'); return; }
   var el;
+  var projectEl = document.getElementById('task-project');
+  var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+  if (!projectId) { showToast(t('project') + ' ' + t('required'), 'error'); return; }
+  var record = {};
+  setField(record, 'tasks', 'title', title);
   if ((el = document.getElementById('task-desc'))) setField(record, 'tasks', 'description', el.value.trim());
   if ((el = document.getElementById('task-status'))) setField(record, 'tasks', 'status', el.value);
   if ((el = document.getElementById('task-priority'))) setField(record, 'tasks', 'priority', el.value);
@@ -9593,6 +9626,7 @@ async function createNextOccurrence(task) {
     setField(record, 'tasks', 'tag', task.Tag);
     setField(record, 'tasks', 'recurrence', task.Recurrence);
     setField(record, 'tasks', 'estimatedHours', task.Estimated_Hours);
+    setField(record, 'tasks', 'projectId', task.Project_Id);
     setTaskCreationAudit(record);
 
     var res = await grist.docApi.applyUserActions([
@@ -9801,10 +9835,11 @@ async function setTaskModificationAudit(record, task, isDraft) {
 async function createTask() {
   await refreshCurrentUserEmail();
   var title = document.getElementById('task-title').value.trim();
-  if (!title) return;
+  if (!title) { showToast(t('fieldTitle') + ' ' + t('required'), 'error'); return; }
 
   var projectEl = document.getElementById('task-project');
   var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+  if (!projectId) { showToast(t('project') + ' ' + t('required'), 'error'); return; }
 
   var record = {};
   setField(record, 'tasks', 'title', title);
@@ -9933,7 +9968,7 @@ function getTaskUpdateDetails(task, record) {
 
 async function updateTask(taskId) {
   var title = document.getElementById('task-title').value.trim();
-  if (!title) return;
+  if (!title) { showToast(t('fieldTitle') + ' ' + t('required'), 'error'); return; }
 
   // Brouillon optimiste pas encore finalisé côté Grist : attendre l'AddRecord
   // en arrière-plan pour récupérer l'id réel avant tout UpdateRecord.
@@ -9966,6 +10001,7 @@ async function updateTask(taskId) {
 
   var projectEl = document.getElementById('task-project');
   var projectId = projectEl && projectEl.value ? parseInt(projectEl.value) : 0;
+  if (!projectId) { showToast(t('project') + ' ' + t('required'), 'error'); return; }
 
   var record = {};
   setField(record, 'tasks', 'title', title);
@@ -10728,9 +10764,9 @@ async function refreshCurrentUserEmail() {
     // Extraction robuste du rowId.
     if (result) {
       if (result.retValues && Array.isArray(result.retValues) && result.retValues[0]) {
-        rowId = result.retValues[0].id || result.retValues[0];
+        rowId = parseInt(result.retValues[0].id || result.retValues[0], 10);
       } else if (Array.isArray(result) && result[0]) {
-        rowId = result[0].id || result[0];
+        rowId = parseInt(result[0].id || result[0], 10);
       }
     }
     if (!rowId) {
