@@ -16,6 +16,7 @@ var i18n = {
     tabPlanning: 'Planning',
     tabProjectList: 'Projets',
     tabTemplates: 'Templates',
+    tabProjectTemplates: 'Templates projets',
     newTask: 'Nouvelle tâche',
     newProject: 'Nouveau projet',
     statTotal: 'Total',
@@ -101,6 +102,25 @@ var i18n = {
     taskMoved: 'Tâche déplacée.',
     templateCreated: 'Modèle créé !',
     templateDeleted: 'Modèle supprimé.',
+    projectTemplatesTitle: 'Templates de projets',
+    projectTemplatesSubtitle: 'Créez des projets à partir de modèles contenant plusieurs tâches',
+    projectTemplateSearchPlaceholder: 'Rechercher un template de projet...',
+    newProjectTemplate: 'Nouveau template de projet',
+    modalNewProjectTemplate: 'Nouveau template de projet',
+    modalEditProjectTemplate: 'Modifier le template de projet',
+    confirmDeleteProjectTemplate: 'Supprimer ce template de projet et ses tâches ?',
+    projectTemplateCreated: 'Template de projet créé !',
+    projectTemplateUpdated: 'Template de projet mis à jour !',
+    projectTemplateDeleted: 'Template de projet supprimé.',
+    projectTemplateTasks: 'Tâches du template',
+    addTemplateTask: 'Ajouter une tâche',
+    noTemplateTasks: 'Aucune tâche dans ce template',
+    noProjectTemplates: 'Aucun template de projet',
+    templateTaskCount: 'tâche(s)',
+    createProjectFromTemplate: 'Créer un projet',
+    durationFull: 'Journée',
+    durationMorning: 'Matin',
+    durationAfternoon: 'Après-midi',
     overdue: 'En retard',
     noDate: 'Aucune date',
     notDefined: 'Non définie',
@@ -162,6 +182,7 @@ var i18n = {
     project: 'Projet',
     projectName: 'Nom du projet',
     projectLead: 'Responsable',
+    projectManager: 'Chef de projet',
     projectDescription: 'Description',
     projectColor: 'Couleur',
     projectStatus: 'Statut',
@@ -369,6 +390,7 @@ var i18n = {
     tabPlanning: 'Planning',
     tabProjectList: 'Project List',
     tabTemplates: 'Templates',
+    tabProjectTemplates: 'Project templates',
     newTask: 'New task',
     newProject: 'New project',
     statTotal: 'Total',
@@ -454,6 +476,25 @@ var i18n = {
     taskMoved: 'Task moved.',
     templateCreated: 'Template created!',
     templateDeleted: 'Template deleted.',
+    projectTemplatesTitle: 'Project templates',
+    projectTemplatesSubtitle: 'Create projects from templates containing several tasks',
+    projectTemplateSearchPlaceholder: 'Search a project template...',
+    newProjectTemplate: 'New project template',
+    modalNewProjectTemplate: 'New project template',
+    modalEditProjectTemplate: 'Edit project template',
+    confirmDeleteProjectTemplate: 'Delete this project template and its tasks?',
+    projectTemplateCreated: 'Project template created!',
+    projectTemplateUpdated: 'Project template updated!',
+    projectTemplateDeleted: 'Project template deleted.',
+    projectTemplateTasks: 'Template tasks',
+    addTemplateTask: 'Add task',
+    noTemplateTasks: 'No tasks in this template',
+    noProjectTemplates: 'No project templates',
+    templateTaskCount: 'task(s)',
+    createProjectFromTemplate: 'Create project',
+    durationFull: 'Full day',
+    durationMorning: 'Morning',
+    durationAfternoon: 'Afternoon',
     notifications: 'Alerts',
     overdueTasksAlert: 'overdue task(s)',
     upcomingTasksAlert: 'upcoming task(s) (3d)',
@@ -511,6 +552,7 @@ var i18n = {
     project: 'Project',
     projectName: 'Project name',
     projectLead: 'Lead',
+    projectManager: 'Project manager',
     projectDescription: 'Description',
     projectColor: 'Color',
     projectStatus: 'Status',
@@ -751,6 +793,8 @@ var tasks = [];
 var users = [];
 var groups = [];
 var templates = [];
+var projectTemplates = [];
+var projectTemplateTasks = [];
 var subtasks = [];
 var dependencies = [];
 var comments = [];
@@ -949,6 +993,8 @@ var TASKS_TABLE = 'PM_Tasks';
 var USERS_TABLE = 'PM_Users';
 var GROUPS_TABLE = 'PM_Groups';
 var TEMPLATES_TABLE = 'PM_Templates';
+var PROJECT_TEMPLATES_TABLE = 'PM_ProjectTemplates';
+var PROJECT_TEMPLATE_TASKS_TABLE = 'PM_ProjectTemplateTasks';
 var SUBTASKS_TABLE = 'PM_Subtasks';
 var DEPENDENCIES_TABLE = 'PM_Dependencies';
 var COMMENTS_TABLE = 'PM_Comments';
@@ -1845,6 +1891,7 @@ function switchTab(tabId) {
   if (tabId === 'planning') renderPlanningView();
   if (tabId === 'projectList') renderProjectListView();
   if (tabId === 'templates') renderTemplatesView();
+  if (tabId === 'projectTemplates') renderProjectTemplatesView();
   if (tabId === 'stats') renderStatsView();
   if (tabId === 'team') renderTeamView();
   if (tabId === 'settings') renderSettingsView();
@@ -1932,6 +1979,39 @@ async function ensureTables() {
           { id: 'Recurrence', type: 'Text' },
           { id: 'Usage_Count', type: 'Int' },
           { id: 'Updated_At', type: 'Date' }
+        ]]
+      ]);
+    }
+
+    // Templates de projets (owner only) : 1 ligne = 1 template, tâches dans PM_ProjectTemplateTasks
+    if (existingTables.indexOf(PROJECT_TEMPLATES_TABLE) === -1) {
+      await grist.docApi.applyUserActions([
+        ['AddTable', PROJECT_TEMPLATES_TABLE, [
+          { id: 'Name', type: 'Text' },
+          { id: 'Description', type: 'Text' },
+          { id: 'Created_At', type: 'DateTime' },
+          { id: 'Created_By', type: 'Text' },
+          { id: 'Last_Modified_At', type: 'DateTime' },
+          { id: 'Last_Modified_By', type: 'Text' }
+        ]]
+      ]);
+    }
+
+    if (existingTables.indexOf(PROJECT_TEMPLATE_TASKS_TABLE) === -1) {
+      await grist.docApi.applyUserActions([
+        ['AddTable', PROJECT_TEMPLATE_TASKS_TABLE, [
+          { id: 'Template_Id', type: 'Ref:PM_ProjectTemplates' },
+          { id: 'Title', type: 'Text' },
+          { id: 'Description', type: 'Text' },
+          { id: 'Status', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['todo', 'progress', 'done'] }) },
+          { id: 'Priority', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['high', 'medium', 'low'] }) },
+          { id: 'Group_Name', type: 'Text' },
+          { id: 'Category', type: 'Text' },
+          { id: 'Tag', type: 'Text' },
+          { id: 'Recurrence', type: 'Choice', widgetOptions: JSON.stringify({ choices: ['none', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'] }) },
+          { id: 'Estimated_Hours', type: 'Numeric' },
+          { id: 'Duration', type: 'Text' },
+          { id: 'Order', type: 'Int' }
         ]]
       ]);
     }
@@ -2545,6 +2625,53 @@ async function loadAllData() {
     }
   } catch (e) {
     templates = [];
+  }
+
+  // Templates de projets (owner only : en cas d'absence de droits, fetchTable lève une erreur -> listes vides)
+  try {
+    var ptplData = await grist.docApi.fetchTable(PROJECT_TEMPLATES_TABLE);
+    projectTemplates = [];
+    if (ptplData && ptplData.id) {
+      for (var pi = 0; pi < ptplData.id.length; pi++) {
+        projectTemplates.push({
+          id: ptplData.id[pi],
+          Name: ptplData.Name ? ptplData.Name[pi] : '',
+          Description: ptplData.Description ? ptplData.Description[pi] : '',
+          Created_At: ptplData.Created_At ? ptplData.Created_At[pi] : null,
+          Created_By: ptplData.Created_By ? ptplData.Created_By[pi] : '',
+          Last_Modified_At: ptplData.Last_Modified_At ? ptplData.Last_Modified_At[pi] : null,
+          Last_Modified_By: ptplData.Last_Modified_By ? ptplData.Last_Modified_By[pi] : ''
+        });
+      }
+    }
+  } catch (e) {
+    projectTemplates = [];
+  }
+
+  try {
+    var pttData = await grist.docApi.fetchTable(PROJECT_TEMPLATE_TASKS_TABLE);
+    projectTemplateTasks = [];
+    if (pttData && pttData.id) {
+      for (var pj = 0; pj < pttData.id.length; pj++) {
+        projectTemplateTasks.push({
+          id: pttData.id[pj],
+          Template_Id: pttData.Template_Id ? pttData.Template_Id[pj] : null,
+          Title: pttData.Title ? pttData.Title[pj] : '',
+          Description: pttData.Description ? pttData.Description[pj] : '',
+          Status: pttData.Status ? pttData.Status[pj] : 'todo',
+          Priority: pttData.Priority ? pttData.Priority[pj] : 'medium',
+          Group_Name: pttData.Group_Name ? pttData.Group_Name[pj] : '',
+          Category: pttData.Category ? pttData.Category[pj] : '',
+          Tag: pttData.Tag ? pttData.Tag[pj] : '',
+          Recurrence: pttData.Recurrence ? pttData.Recurrence[pj] : 'none',
+          Estimated_Hours: pttData.Estimated_Hours ? pttData.Estimated_Hours[pj] : 0,
+          Duration: pttData.Duration ? pttData.Duration[pj] : '',
+          Order: pttData.Order ? pttData.Order[pj] : 0
+        });
+      }
+    }
+  } catch (e) {
+    projectTemplateTasks = [];
   }
 
   try {
@@ -3586,6 +3713,7 @@ function refreshAllViews() {
     if (tab === 'planning') renderPlanningView();
     if (tab === 'projectList') renderProjectListView();
     if (tab === 'templates') renderTemplatesView();
+    if (tab === 'projectTemplates') renderProjectTemplatesView();
     if (tab === 'stats') renderStatsView();
     if (tab === 'team') renderTeamView();
   }
@@ -10201,8 +10329,453 @@ async function useTemplate(tplId) {
 }
 
 // =============================================================================
-// WIDGET PERMISSIONS (centralized via Widget_Registry + Widget_Permissions)
+// PROJECT TEMPLATES (templates de projets — accès réservé au owner du document)
 // =============================================================================
+
+function getProjectTemplateTasks(tplId) {
+  return projectTemplateTasks
+    .filter(function(x) { return x.Template_Id === tplId; })
+    .sort(function(a, b) { return (a.Order || 0) - (b.Order || 0); });
+}
+
+function renderProjectTemplatesView() {
+  var container = document.getElementById('project-templates-list');
+  if (!container) return;
+  var searchEl = document.getElementById('project-template-search');
+  var search = (searchEl ? searchEl.value : '').toLowerCase();
+  var filtered = projectTemplates.filter(function(tpl) {
+    if (search && (tpl.Name + ' ' + tpl.Description).toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  });
+
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var tpl = filtered[i];
+    var taskCount = getProjectTemplateTasks(tpl.id).length;
+    html += '<div class="template-card" style="cursor:pointer;" onclick="openProjectTemplateDetail(' + tpl.id + ')">';
+    html += '<div class="template-card-info">';
+    html += '<h4>' + sanitize(tpl.Name) + '</h4>';
+    html += '<div class="template-meta">';
+    html += '&#128203; ' + taskCount + ' ' + t('templateTaskCount');
+    if (tpl.Created_At) html += ' &bull; ' + (currentLang === 'fr' ? 'Créé le ' : 'Created ') + formatDate(tpl.Created_At) + (tpl.Created_By ? ' (' + sanitize(tpl.Created_By) + ')' : '');
+    if (tpl.Last_Modified_At) html += ' &bull; ' + (currentLang === 'fr' ? 'Modifié le ' : 'Updated ') + formatDate(tpl.Last_Modified_At) + (tpl.Last_Modified_By ? ' (' + sanitize(tpl.Last_Modified_By) + ')' : '');
+    html += '</div>';
+    if (tpl.Description) html += '<div style="font-size:12px;color:#64748b;margin-top:4px;">' + sanitize(tpl.Description) + '</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:4px;" onclick="event.stopPropagation();">';
+    html += '<button class="btn btn-primary btn-sm" onclick="openCreateProjectFromTemplateModal(' + tpl.id + ')">' + t('createProjectFromTemplate') + '</button>';
+    if (isOwner) html += '<button class="btn-icon" onclick="openNewProjectTemplateModal(' + tpl.id + ')" title="' + t('editTemplate') + '">&#9999;&#65039;</button>';
+    if (isOwner) html += '<button class="btn-icon" onclick="deleteProjectTemplate(' + tpl.id + ')" title="' + t('delete') + '">&#128465;&#65039;</button>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  if (filtered.length === 0) {
+    html = '<div style="text-align:center;padding:40px;color:#94a3b8;">' + t('noProjectTemplates') + '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function openProjectTemplateDetail(tplId) {
+  var tpl = projectTemplates.find(function(x) { return x.id === tplId; });
+  if (!tpl) return;
+  var tplTasks = getProjectTemplateTasks(tplId);
+
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>&#128449;&#65039; ' + sanitize(tpl.Name) + '</h3><button class="modal-close" onclick="closeModalForce()">&#10005;</button></div>';
+  html += '<div class="modal-body">';
+  if (tpl.Description) html += '<p style="color:#64748b;font-size:13px;margin-top:0;">' + sanitize(tpl.Description) + '</p>';
+  html += '<h4 style="margin:12px 0 8px;">' + t('projectTemplateTasks') + ' (' + tplTasks.length + ')</h4>';
+  if (tplTasks.length === 0) {
+    html += '<div style="text-align:center;padding:16px;color:#94a3b8;font-size:13px;">' + t('noTemplateTasks') + '</div>';
+  } else {
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>' + t('fieldTitle') + '</th><th>' + t('fieldStatus') + '</th><th>' + t('fieldPriority') + '</th><th>' + t('fieldGroup') + '</th><th>' + t('fieldEstimatedTime') + '</th>';
+    html += '</tr></thead><tbody>';
+    for (var i = 0; i < tplTasks.length; i++) {
+      var tt = tplTasks[i];
+      html += '<tr>';
+      html += '<td>' + sanitize(tt.Title) + (tt.Description ? '<div style="font-size:11px;color:#94a3b8;">' + sanitize(tt.Description) + '</div>' : '') + '</td>';
+      html += '<td>' + sanitize(getStatusLabel(tt.Status)) + '</td>';
+      html += '<td>' + sanitize(priorityLabel(tt.Priority)) + '</td>';
+      html += '<td>' + (tt.Group_Name ? '<span class="assignee-chip">&#128101; ' + sanitize(tt.Group_Name) + '</span>' : '--') + '</td>';
+      html += '<td>' + (tt.Estimated_Hours || '') + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+  }
+  html += '</div>';
+  html += '<div class="modal-footer">';
+  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
+  if (isOwner) html += '<button class="btn btn-secondary" onclick="openNewProjectTemplateModal(' + tpl.id + ')">' + t('editTemplate') + '</button>';
+  html += '<button class="btn btn-primary" onclick="openCreateProjectFromTemplateModal(' + tpl.id + ')">' + t('createProjectFromTemplate') + '</button>';
+  html += '</div></div></div>';
+
+  document.getElementById('modal-container').innerHTML = html;
+}
+
+// --- Édition d'un template de projet (nom, description, tâches) ---
+
+var pttDraft = [];
+var pttDraftTplId = null;
+
+function pttSelectOptions(list, nameProp, selected) {
+  var html = '<option value="">--</option>';
+  for (var i = 0; i < list.length; i++) {
+    var v = list[i][nameProp];
+    if (!v) continue;
+    html += '<option value="' + sanitize(v) + '"' + (v === selected ? ' selected' : '') + '>' + sanitize(v) + '</option>';
+  }
+  return html;
+}
+
+function pttStatusOptions(selected) {
+  var keys = ['todo', 'progress', 'done'];
+  return keys.map(function(k) {
+    return '<option value="' + k + '"' + (k === selected ? ' selected' : '') + '>' + sanitize(getStatusLabel(k)) + '</option>';
+  }).join('');
+}
+
+function pttRecurrenceOptions(selected) {
+  var keys = ['none', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
+  var labels = { none: 'recurrenceNone', daily: 'recurrenceDaily', weekly: 'recurrenceWeekly', biweekly: 'recurrenceBiweekly', monthly: 'recurrenceMonthly', quarterly: 'recurrenceQuarterly', yearly: 'recurrenceYearly' };
+  return keys.map(function(k) {
+    return '<option value="' + k + '"' + (k === selected ? ' selected' : '') + '>' + t(labels[k]) + '</option>';
+  }).join('');
+}
+
+function pttDurationOptions(selected) {
+  var opts = [['', '--'], ['Journée', t('durationFull')], ['Matin', t('durationMorning')], ['Après-midi', t('durationAfternoon')]];
+  return opts.map(function(o) {
+    return '<option value="' + o[0] + '"' + (o[0] === selected ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
+}
+
+function pttPriorityOptions(selected) {
+  var opts = [['medium', t('priorityMedium')], ['high', t('priorityHigh')], ['low', t('priorityLow')]];
+  return opts.map(function(o) {
+    return '<option value="' + o[0] + '"' + (o[0] === selected ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
+}
+
+function openNewProjectTemplateModal(tplId) {
+  if (!isOwner) return;
+  var editing = tplId != null;
+  var tpl = editing ? projectTemplates.find(function(x) { return x.id === tplId; }) : null;
+  if (editing && !tpl) return;
+  pttDraftTplId = editing ? tplId : null;
+  pttDraft = editing ? getProjectTemplateTasks(tplId).map(function(x) {
+    return {
+      Title: x.Title || '', Description: x.Description || '', Status: x.Status || 'todo',
+      Priority: x.Priority || 'medium', Group_Name: x.Group_Name || '', Category: x.Category || '',
+      Tag: x.Tag || '', Recurrence: x.Recurrence || 'none',
+      Estimated_Hours: (x.Estimated_Hours != null ? x.Estimated_Hours : ''), Duration: x.Duration || ''
+    };
+  }) : [];
+
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal modal-cf" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>' + t(editing ? 'modalEditProjectTemplate' : 'modalNewProjectTemplate') + '</h3><button class="modal-close" onclick="closeModalForce()">&#10005;</button></div>';
+  html += '<div class="modal-body">';
+  html += '<div class="form-group"><label>' + t('projectName') + ' *</label><input type="text" id="ptpl-name" value="' + (editing ? sanitize(tpl.Name) : '') + '" /></div>';
+  html += '<div class="form-group"><label>' + t('fieldDescription') + '</label><textarea id="ptpl-desc">' + (editing ? sanitize(tpl.Description || '') : '') + '</textarea></div>';
+  html += '<h4 style="margin:12px 0 8px;">' + t('projectTemplateTasks') + '</h4>';
+  html += '<div id="ptt-rows"></div>';
+  html += '<button class="btn btn-secondary btn-sm" onclick="addPttRow()">+ ' + t('addTemplateTask') + '</button>';
+  html += '</div>';
+  html += '<div class="modal-footer">';
+  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
+  html += '<button class="btn btn-primary" onclick="saveProjectTemplate()">' + t('save') + '</button>';
+  html += '</div></div></div>';
+
+  document.getElementById('modal-container').innerHTML = html;
+  renderPttRows();
+}
+
+function renderPttRows() {
+  var container = document.getElementById('ptt-rows');
+  if (!container) return;
+  var html = '';
+  for (var i = 0; i < pttDraft.length; i++) {
+    var x = pttDraft[i];
+    html += '<div class="template-card" style="margin-bottom:8px;cursor:default;">';
+    html += '<div class="form-row">';
+    html += '<div class="form-group" style="flex:2;"><label>' + t('fieldTitle') + ' *</label><input type="text" id="ptt-title-' + i + '" value="' + sanitize(x.Title) + '" /></div>';
+    html += '<div class="form-group"><label>' + t('fieldStatus') + '</label><select id="ptt-status-' + i + '">' + pttStatusOptions(x.Status) + '</select></div>';
+    html += '<div class="form-group"><label>' + t('fieldPriority') + '</label><select id="ptt-priority-' + i + '">' + pttPriorityOptions(x.Priority) + '</select></div>';
+    html += '<div class="form-group" style="display:flex;align-items:flex-end;"><button class="btn-icon" onclick="removePttRow(' + i + ')" title="' + t('delete') + '">&#128465;&#65039;</button></div>';
+    html += '</div>';
+    html += '<div class="form-group"><label>' + t('fieldDescription') + '</label><textarea id="ptt-desc-' + i + '" rows="2">' + sanitize(x.Description) + '</textarea></div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>' + t('fieldGroup') + '</label><select id="ptt-group-' + i + '">' + pttSelectOptions(groups, 'Name', x.Group_Name) + '</select></div>';
+    html += '<div class="form-group"><label>' + t('fieldCategory') + '</label><select id="ptt-category-' + i + '">' + pttSelectOptions(categories, 'Name', x.Category) + '</select></div>';
+    html += '<div class="form-group"><label>' + t('tag') + '</label><select id="ptt-tag-' + i + '">' + pttSelectOptions(tags, 'Name', x.Tag) + '</select></div>';
+    html += '</div>';
+    html += '<div class="form-row">';
+    html += '<div class="form-group"><label>&#128337;&#65039; ' + t('recurrence') + '</label><select id="ptt-recurrence-' + i + '">' + pttRecurrenceOptions(x.Recurrence) + '</select></div>';
+    html += '<div class="form-group"><label>' + t('fieldEstimatedTime') + '</label><input type="number" id="ptt-hours-' + i + '" step="0.5" min="0" value="' + sanitize(x.Estimated_Hours) + '" /></div>';
+    html += '<div class="form-group"><label>' + (currentLang === 'fr' ? 'Durée' : 'Duration') + '</label><select id="ptt-duration-' + i + '">' + pttDurationOptions(x.Duration) + '</select></div>';
+    html += '</div>';
+    html += '</div>';
+  }
+  if (pttDraft.length === 0) {
+    html = '<div style="text-align:center;padding:12px;color:#94a3b8;font-size:13px;">' + t('noTemplateTasks') + '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function collectPttDraftFromDom() {
+  for (var i = 0; i < pttDraft.length; i++) {
+    var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+    pttDraft[i].Title = g('ptt-title-' + i).trim();
+    pttDraft[i].Description = g('ptt-desc-' + i);
+    pttDraft[i].Status = g('ptt-status-' + i) || 'todo';
+    pttDraft[i].Priority = g('ptt-priority-' + i) || 'medium';
+    pttDraft[i].Group_Name = g('ptt-group-' + i);
+    pttDraft[i].Category = g('ptt-category-' + i);
+    pttDraft[i].Tag = g('ptt-tag-' + i);
+    pttDraft[i].Recurrence = g('ptt-recurrence-' + i) || 'none';
+    pttDraft[i].Estimated_Hours = g('ptt-hours-' + i);
+    pttDraft[i].Duration = g('ptt-duration-' + i);
+  }
+}
+
+function addPttRow() {
+  collectPttDraftFromDom();
+  pttDraft.push({ Title: '', Description: '', Status: 'todo', Priority: 'medium', Group_Name: '', Category: '', Tag: '', Recurrence: 'none', Estimated_Hours: '', Duration: '' });
+  renderPttRows();
+}
+
+function removePttRow(idx) {
+  collectPttDraftFromDom();
+  pttDraft.splice(idx, 1);
+  renderPttRows();
+}
+
+async function saveProjectTemplate() {
+  if (!isOwner) return;
+  var nameEl = document.getElementById('ptpl-name');
+  var name = nameEl ? nameEl.value.trim() : '';
+  if (!name) { showToast(t('projectName') + ' ' + t('required'), 'error'); return; }
+  collectPttDraftFromDom();
+  var rows = pttDraft.filter(function(x) {
+    return x.Title || x.Description || x.Group_Name || x.Category || x.Tag || x.Estimated_Hours || x.Duration;
+  });
+  for (var i = 0; i < rows.length; i++) {
+    if (!rows[i].Title) { showToast(t('fieldTitle') + ' ' + t('required'), 'error'); return; }
+  }
+  await refreshCurrentUserEmail();
+  var now = Math.floor(Date.now() / 1000);
+  var userName = getCurrentUserDisplayName();
+  var editing = pttDraftTplId != null;
+  var descEl = document.getElementById('ptpl-desc');
+  var desc = descEl ? descEl.value.trim() : '';
+
+  try {
+    var tplId;
+    if (editing) {
+      tplId = pttDraftTplId;
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord', PROJECT_TEMPLATES_TABLE, tplId, {
+          Name: name,
+          Description: desc,
+          Last_Modified_At: now,
+          Last_Modified_By: userName
+        }]
+      ]);
+      var existingTasks = getProjectTemplateTasks(tplId);
+      if (existingTasks.length) {
+        await grist.docApi.applyUserActions(
+          existingTasks.map(function(x) { return ['RemoveRecord', PROJECT_TEMPLATE_TASKS_TABLE, x.id]; })
+        );
+      }
+      showToast(t('projectTemplateUpdated'), 'success');
+    } else {
+      var createRes = await grist.docApi.applyUserActions([
+        ['AddRecord', PROJECT_TEMPLATES_TABLE, null, {
+          Name: name,
+          Description: desc,
+          Created_At: now,
+          Created_By: userName,
+          Last_Modified_At: now,
+          Last_Modified_By: userName
+        }]
+      ]);
+      tplId = createRes && createRes.retValues && createRes.retValues[0];
+      showToast(t('projectTemplateCreated'), 'success');
+    }
+
+    if (tplId && rows.length) {
+      var taskRows = rows.map(function(x, idx) {
+        return {
+          Template_Id: tplId,
+          Title: x.Title,
+          Description: x.Description || '',
+          Status: x.Status || 'todo',
+          Priority: x.Priority || 'medium',
+          Group_Name: x.Group_Name || '',
+          Category: x.Category || '',
+          Tag: x.Tag || '',
+          Recurrence: x.Recurrence || 'none',
+          Estimated_Hours: parseFloat(x.Estimated_Hours) || 0,
+          Duration: x.Duration || '',
+          Order: idx + 1
+        };
+      });
+      await grist.docApi.applyUserActions([['BulkAddRecord', PROJECT_TEMPLATE_TASKS_TABLE, taskRows]]);
+    }
+
+    closeModalForce();
+    await loadAllData();
+    renderProjectTemplatesView();
+  } catch (e) {
+    console.error('Error saving project template:', e);
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteProjectTemplate(tplId) {
+  if (!isOwner) return;
+  var confirmed = await showConfirmModal(t('confirmDeleteProjectTemplate'), currentLang === 'fr' ? 'Supprimer le template de projet' : 'Delete project template');
+  if (!confirmed) return;
+  try {
+    var tplTasks = getProjectTemplateTasks(tplId);
+    if (tplTasks.length) {
+      await grist.docApi.applyUserActions(
+        tplTasks.map(function(x) { return ['RemoveRecord', PROJECT_TEMPLATE_TASKS_TABLE, x.id]; })
+      );
+    }
+    await grist.docApi.applyUserActions([['RemoveRecord', PROJECT_TEMPLATES_TABLE, tplId]]);
+    showToast(t('projectTemplateDeleted'), 'info');
+    await loadAllData();
+    renderProjectTemplatesView();
+  } catch (e) {
+    console.error('Error deleting project template:', e);
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// --- Création d'un projet à partir d'un template ---
+
+function pttUserOptionsHtml(selectedValue) {
+  var html = '<option value="">--</option>';
+  var sortedUsers = users.slice().sort(function(a, b) {
+    return (a.Name || a.Email || '').localeCompare(b.Name || b.Email || '');
+  });
+  sortedUsers.forEach(function(u) {
+    var val = u.Email || u.Name;
+    if (!val) return;
+    html += '<option value="' + sanitize(val) + '"' + (val === selectedValue ? ' selected' : '') + '>' + sanitize(u.Name || u.Email) + '</option>';
+  });
+  return html;
+}
+
+function pttManagerOptionsHtml(selectedValue) {
+  var html = '<option value="">--</option>';
+  projectManagers.forEach(function(pm) {
+    if (!pm.Name) return;
+    html += '<option value="' + sanitize(pm.Name) + '"' + (pm.Name === selectedValue ? ' selected' : '') + '>' + sanitize(pm.Name) + '</option>';
+  });
+  return html;
+}
+
+function openCreateProjectFromTemplateModal(tplId) {
+  if (!isOwner) return;
+  var tpl = projectTemplates.find(function(x) { return x.id === tplId; });
+  if (!tpl) return;
+
+  var html = '<div class="modal-overlay" onclick="closeModal(event)">';
+  html += '<div class="modal" onclick="event.stopPropagation()">';
+  html += '<div class="modal-header"><h3>&#128449;&#65039; ' + t('createProjectFromTemplate') + '</h3><button class="modal-close" onclick="closeModalForce()">&#10005;</button></div>';
+  html += '<div class="modal-body">';
+  html += '<div class="form-group"><label>' + t('projectName') + ' *</label><input type="text" id="cpft-name" value="' + sanitize(tpl.Name) + '" /></div>';
+  html += '<div class="form-row">';
+  html += '<div class="form-group"><label>' + t('projectLead') + '</label><select id="cpft-lead">' + pttUserOptionsHtml('') + '</select></div>';
+  html += '<div class="form-group"><label>' + t('projectManager') + '</label><select id="cpft-manager">' + pttManagerOptionsHtml('') + '</select></div>';
+  html += '</div>';
+  html += '<div style="font-size:12px;color:#64748b;">' + t('projectTemplateTasks') + ' : ' + getProjectTemplateTasks(tplId).length + ' ' + t('templateTaskCount') + '</div>';
+  html += '</div>';
+  html += '<div class="modal-footer">';
+  html += '<button class="btn btn-secondary" onclick="closeModalForce()">' + t('cancel') + '</button>';
+  html += '<button class="btn btn-primary" onclick="createProjectFromTemplate(' + tplId + ')">' + t('createProjectFromTemplate') + '</button>';
+  html += '</div></div></div>';
+
+  document.getElementById('modal-container').innerHTML = html;
+}
+
+async function createProjectFromTemplate(tplId) {
+  if (!isOwner) return;
+  var tpl = projectTemplates.find(function(x) { return x.id === tplId; });
+  if (!tpl) return;
+  await refreshCurrentUserEmail();
+  var nameEl = document.getElementById('cpft-name');
+  var name = nameEl ? nameEl.value.trim() : '';
+  if (!name) { showToast(t('projectName') + ' ' + t('required'), 'error'); return; }
+  var leadEl = document.getElementById('cpft-lead');
+  var lead = leadEl ? leadEl.value : '';
+  var managerEl = document.getElementById('cpft-manager');
+  var manager = managerEl ? managerEl.value : '';
+
+  var tplTasks = getProjectTemplateTasks(tplId);
+
+  try {
+    var projRecord = {};
+    setField(projRecord, 'projects', 'name', name);
+    setField(projRecord, 'projects', 'description', tpl.Description || '');
+    setField(projRecord, 'projects', 'color', '#6366f1');
+    setField(projRecord, 'projects', 'status', 'active');
+    setField(projRecord, 'projects', 'lead', lead);
+    setField(projRecord, 'projects', 'projectManager', manager);
+    if (PROJECTS_TABLE === DEFAULT_PROJECTS_TABLE) {
+      projRecord.CreatedBy = currentUserEmail || '';
+      projRecord.CreatedAt = new Date().toISOString();
+    }
+    var projRes = await grist.docApi.applyUserActions([
+      ['AddRecord', PROJECTS_TABLE, null, projRecord]
+    ]);
+    var newProjectId = projRes && projRes.retValues && projRes.retValues[0];
+    if (!newProjectId) throw new Error('Project id not returned');
+
+    if (tplTasks.length) {
+      var assignee = lead ? getUserDisplayName(lead) : '';
+      var taskRows = tplTasks.map(function(x, idx) {
+        var r = {};
+        setField(r, 'tasks', 'title', x.Title || '');
+        setField(r, 'tasks', 'description', x.Description || '');
+        setField(r, 'tasks', 'status', x.Status || 'todo');
+        setField(r, 'tasks', 'priority', x.Priority || 'medium');
+        setField(r, 'tasks', 'group', x.Group_Name || '');
+        setField(r, 'tasks', 'category', x.Category || '');
+        setField(r, 'tasks', 'tag', x.Tag || '');
+        setField(r, 'tasks', 'recurrence', x.Recurrence || 'none');
+        setField(r, 'tasks', 'estimatedHours', parseFloat(x.Estimated_Hours) || 0);
+        setField(r, 'tasks', 'duration', x.Duration || '');
+        setField(r, 'tasks', 'assignee', assignee);
+        setField(r, 'tasks', 'startDate', null);
+        setField(r, 'tasks', 'dueDate', null);
+        setField(r, 'tasks', 'projectId', newProjectId);
+        r.Order = idx + 1;
+        setTaskCreationAudit(r);
+        return r;
+      });
+      await grist.docApi.applyUserActions([['BulkAddRecord', TASKS_TABLE, taskRows]]);
+    }
+
+    closeModalForce();
+    await loadAllData();
+    refreshAllViews();
+    switchTab('projectList');
+  } catch (e) {
+    console.error('Error creating project from template:', e);
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// =============================================================================
+// WIDGET PERMISSIONS (centralized via Widget_Registry + Widget_Permissions)
+// ============================================================================
 
 var WIDGET_ID = 'grist-project-manager';
 var WIDGET_NAME = 'Gestion de Projet';
@@ -10214,6 +10787,7 @@ var WIDGET_TABS = [
   { id: 'planning',  label_fr: 'Planning',     label_en: 'Planning' },
   { id: 'projectList', label_fr: 'Projets', label_en: 'Projects' },
   { id: 'templates', label_fr: 'Templates',    label_en: 'Templates',  ownerOnly: true },
+  { id: 'projectTemplates', label_fr: 'Templates projets', label_en: 'Project templates', ownerOnly: true },
   { id: 'stats',     label_fr: 'Stats',        label_en: 'Stats',      ownerOnly: true },
   { id: 'team',      label_fr: 'Équipe',       label_en: 'Team',       ownerOnly: true },
   { id: 'settings',  label_fr: 'Paramètres',   label_en: 'Settings',   ownerOnly: true }
@@ -10272,12 +10846,12 @@ async function loadWidgetPermissions() {
 function isTabAllowed(tabId) {
   if (userAllowedTabs.length > 0) return userAllowedTabs.indexOf(tabId) !== -1;
   if (isOwner) return true;
-  var ownerTabs = ['team', 'templates', 'stats', 'settings'];
+  var ownerTabs = ['team', 'templates', 'projectTemplates', 'stats', 'settings'];
   return ownerTabs.indexOf(tabId) === -1;
 }
 
 function applyOwnerRestrictions() {
-  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'planning', 'projectList', 'templates', 'stats', 'team', 'settings'];
+  var allTabs = ['calendar', 'kanban', 'table', 'gantt', 'planning', 'projectList', 'templates', 'projectTemplates', 'stats', 'team', 'settings'];
   allTabs.forEach(function(tab) {
     var el = document.querySelector('[data-tab="' + tab + '"]');
     if (el) el.style.display = isTabAllowed(tab) ? '' : 'none';
@@ -11337,6 +11911,8 @@ var PM_ACL_RULES = [
   { tableId: 'PM_Tags',            ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
   { tableId: 'PM_Config',          ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
   { tableId: 'PM_Templates',       ownerPerms: '+CRUDS', editorPerms: '+R-CUD' },
+  { tableId: 'PM_ProjectTemplates',     ownerPerms: '+CRUDS', editorPerms: '-----' },
+  { tableId: 'PM_ProjectTemplateTasks', ownerPerms: '+CRUDS', editorPerms: '-----' },
   { tableId: 'PM_Tasks',           ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
   { tableId: 'PM_Subtasks',        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
   { tableId: 'PM_Comments',        ownerPerms: '+CRUDS', editorPerms: '+RCU-D' },
